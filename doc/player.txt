@@ -1,0 +1,104 @@
+*player.nvim.txt*              Music player for Neovim
+
+===============================================================================
+CONTENTS                                                   *player.nvim-contents*
+
+  1. Overview ............................ |player.nvim-overview|
+  2. Setup ............................... |player.nvim-setup|
+  3. Commands ............................ |player.nvim-commands|
+  4. Lyrics .............................. |player.nvim-lyrics|
+  5. Requirements and limits ............. |player.nvim-requirements|
+
+===============================================================================
+1. OVERVIEW                                                *player.nvim-overview*
+
+player.nvim is a Lua Neovim interface to mpv with a TypeScript helper for
+search, lyric parsing, and translation. It has a rounded now-playing dashboard,
+LRCLIB/JioSaavn catalog search, word-level TTML karaoke highlighting, a live
+mpv/FFmpeg spectrum window, local media and supported streaming URLs, a local
+picker and FIFO queue, yt-dlp search/download, configurable EQ, and filters.
+
+Neovim does not decode audio. mpv handles playback; FFmpeg filters handle EQ,
+filtering, and the visualizer. JioSaavn metadata search uses an unofficial
+third-party wrapper. No direct-link decryption or DRM bypass is implemented.
+
+===============================================================================
+2. SETUP                                                      *player.nvim-setup*
+
+Requires Neovim 0.10+, mpv, and yt-dlp for its search/download features.
+Node.js 18+ is needed for lyric catalog search and translation. Telescope.nvim
+is optional. curl is needed only for direct lrc.red TTML fetches when Node is
+not used. FFmpeg with showcqt is needed for the spectrum window.
+
+Call setup from init.lua after installing the plugin:
+>
+  require("player").setup({
+    default_volume = 70,
+    download_dir = vim.fn.expand("~/Music"),
+    eq = { enabled = false },
+  })
+<
+
+EQ defaults to ten zero-gain bands centered at 31, 63, 125, 250, 500, 1000,
+2000, 4000, 8000, and 16000 Hz. Each gain must be from -12 to +12 dB.
+
+===============================================================================
+3. COMMANDS                                                *player.nvim-commands*
+
+:Player [source]             Open the dashboard, or play source.
+:PlayerPlay [source]         Pick a local file, or play a file/URL.
+:PlayerQueue                 Pick and enqueue a local file.
+:PlayerQueueAdd [source]     Enqueue a local file or URL (picker if omitted).
+:PlayerQueueList             Browse the queue and play a selected item.
+:PlayerQueueClear            Stop playback and clear the queue.
+:PlayerShuffle [on|off]      Toggle or set random next-track selection.
+:PlayerRepeat [mode]         Cycle repeat, or set off, queue, or track.
+:PlayerPause                 Toggle pause.
+:PlayerNext                  Play the next queued item.
+:PlayerPrev                  Play the previous item (or seek to start).
+:PlayerStop                  Stop current playback.
+:PlayerSearch [query]        Search yt-dlp extractors and choose a result.
+:PlayerJioSaavn [query]      Search/play JioSaavn catalog permalinks.
+:PlayerDownload [url]        Download/extract audio from an HTTP(S) URL.
+:PlayerEQ [on|off]           Enter a custom 10-band EQ curve, or toggle it.
+:PlayerFilter [type]         Select/configure lowpass, highpass, bandpass, off.
+:PlayerLyrics [ISRC]         Fetch TTML lyrics from lrc.red by ISRC.
+:PlayerLyricsSearch [query]  Search LRCLIB and JioSaavn song metadata.
+:PlayerTranslate [language]  Translate open lyrics using LibreTranslate.
+:PlayerVisualize             Toggle mpv's live spectrum window.
+:PlayerStatus                Show mpv title and play position.
+:PlayerQuit                  Quit the mpv child process.
+
+Mappings default to <Space> (pause), ]n (next), [n (previous), and l (lyrics).
+Set keymaps in setup() to customize them. With Telescope, <CR> plays the selected
+file and <C-q> enqueues it; :PlayerQueue opens a queue-focused picker.
+
+===============================================================================
+4. LYRICS                                                    *player.nvim-lyrics*
+
+The lyric search combines LRCLIB records with JioSaavn catalog matches; lyrics
+for every search result are resolved through LRCLIB synced/plain fields. A
+selected JioSaavn result is matched to LRCLIB by track metadata. Only an explicit
+:PlayerLyrics <ISRC> request uses lrc.red TTML; :PlayerLyrics with no argument
+tries mpv metadata ISRC, then prompts for one.
+TTML spans drive word karaoke; synced LRC drives line karaoke. Press t in the
+lyrics float to translate and f to toggle follow. Translation sends lyric text
+to the configured LibreTranslate-compatible URL (localhost by default).
+
+The spectrum visualization is rendered in mpv's own video window, not inside
+the Neovim float. It requires FFmpeg's showcqt filter.
+
+===============================================================================
+5. REQUIREMENTS AND LIMITS                           *player.nvim-requirements*
+
+Playback requires mpv. Search and downloads require yt-dlp. Audio extraction and
+lavfi EQ/filter processing require an mpv/FFmpeg build with the corresponding
+filters. Extractor and account availability is controlled by mpv/yt-dlp and the
+source service. A service requiring its own app/API authorization flow is not
+automatically integrated just because it has a web URL.
+
+The TypeScript helper is split across src/*.ts modules. src/lyrics.ts is the
+public entry and CLI; compiled runtime modules are emitted under dist/. Rebuild
+with npm ci && npm run build. Run parser tests with npm test.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:
