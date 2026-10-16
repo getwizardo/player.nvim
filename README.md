@@ -1,16 +1,21 @@
 # player.nvim
 
-A music player for Neovim, written in Lua with a TypeScript lyrics/search/translation helper. Its centered, rounded dashboard and karaoke float use a dark Apple Music-inspired palette, animated now-playing/progress, and timed line/word highlighting. Neovim supplies the UI and controls; **mpv** does the actual decoding and playback.
+A music player for Neovim, **written entirely in TypeScript**. Its centered, rounded dashboard and karaoke float use a dark Apple Music-inspired palette, animated now-playing/progress, and timed line/word highlighting. Neovim supplies the UI and controls; **mpv** does the actual decoding and playback.
+
+The Neovim side is compiled from TypeScript to Lua with [typescript-to-lua](https://github.com/TypeScriptToLua/TypeScriptToLua); the generated `lua/` and `plugin/` files are committed, so the plugin can be installed without a Node.js toolchain. The lyrics helper is a small Node.js CLI that is compiled to `dist/` and committed as well.
 
 ## Features
 
 - Local files, streaming URLs and yt-dlp-supported sources, including JioSaavn links through yt-dlp's JioSaavn extractor.
-- JioSaavn catalog search and play by its public song permalink (the search API is an unofficial third-party wrapper; no direct media URL extraction or DRM workaround is implemented here).
-- LRCLIB + JioSaavn-catalog lyrics search; direct ISRC-based TTML from [lrc.red](https://lrc.red); line-synced LRC and plain-lyrics fallback.
+- JioSaavn catalog search and play by its public song permalink (the search API is an unofficial third-party wrapper; no direct media URL extraction or DRM workaround is implemented here). The permalink is resolved with yt-dlp before it is played.
+- One search over several sources: yt-dlp (and everything it supports) and the JioSaavn catalog are asked at the same time, and the results are merged into one list.
+- LRCLIB, MusicBrainz and JioSaavn-catalog lyrics search, plus the iTunes catalogue for the tracks no lyric service knows; line-synced LRC and plain-lyrics fallback.
+- Direct ISRC-based TTML from [lrc.red](https://lrc.red); the word level timings of the document drive the karaoke highlight.
 - Karaoke view with word-level TTML timing where supplied, current-line follow, optional translation rows and a persistent dark, rounded Neovim UI.
 - Real-time mpv/FFmpeg `showcqt` spectrum in mpv's own video window (separate from the Neovim dashboard).
 - Custom 10-band EQ, low-pass/high-pass/band-pass filters, local picker, selectable in-memory queue, shuffle/history, repeat modes, yt-dlp search/download, and playback controls.
 - TypeScript helper (`dist/lyrics.js`) handles search, TTML/LRC parsing, and translation. Direct lrc.red TTML fetch retains a curl fallback; expanded search/translation needs Node.js.
+- The whole plugin is written in TypeScript: the Neovim side is compiled to Lua and committed, the helper is compiled to JavaScript and committed. Both are covered by an automated test suite.
 
 ## Requirements
 
@@ -46,13 +51,29 @@ With lazy.nvim:
 
 With a native package manager, put this repository on `runtimepath`, then call `require("player").setup()` in your config. `plugin/player.lua` registers the `:Player*` commands automatically.
 
-The TypeScript helper is split into focused `.ts` modules under `src/` (`parsers`, lyric/provider services, translation, types, and CLI). `src/lyrics.ts` is the public entry/barrel; the compiled entry is `dist/lyrics.js`, with its sibling runtime modules in `dist/`. To rebuild or run parser tests:
+Everything that is needed at runtime is committed: the compiled Lua plugin (`lua/`, `plugin/`) and the compiled helper (`dist/`). Node.js is only needed at runtime for the lyric search and the translation, not to install the plugin.
+
+### Building from source
+
+The repository is a TypeScript project; the compiled output is committed.
+
+| Source | Compiled to | Purpose |
+| --- | --- | --- |
+| `src/lua/player/*.ts` | `lua/player/*.lua` | The plugin itself |
+| `src/plugin/player.ts` | `plugin/player.lua` | The `:Player*` commands |
+| `src/node/*.ts` | `dist/*.js` | The lyrics/search/translation helper |
+| `src/tests/*.ts` | `.tmp/test/` | The test suite |
 
 ```sh
 npm ci
-npm run build
-npm test
+npm run build      # compile the Lua plugin and the Node.js helper
+npm run typecheck  # check the TypeScript sources
+npm test           # run the Lua and the Node.js tests
 ```
+
+`npm run check:generated` rebuilds everything and fails when the committed output is out of date.
+
+The Lua side is tested with a small harness (`src/tests/lua-harness.ts`) that stubs the Neovim API and runs the generated code in a real Lua interpreter; the tests cover the queue, the configuration, the TTML/LRC parsers and the public API.
 
 ## Usage
 
@@ -111,6 +132,18 @@ require("player").setup({
 })
 ```
 
+## When nothing plays
+
+The player reports what mpv answers instead of staying silent:
+
+- `mpv could not play <source>: <reason>` — mpv refused the file or the URL.
+- `mpv could not load the file: <reason>` — the file was found but could not be decoded.
+- `Could not reach the mpv IPC socket` — the JSON IPC socket of mpv is not reachable. The plugin then starts a plain mpv process, so the music plays but the plugin cannot control it.
+- `Not a readable local file or a URL` — the path does not exist, or it is not a URL.
+- `That file is empty` — the file has no content.
+
+A link to a web page (a JioSaavn permalink, for example) is resolved with yt-dlp before it is handed to mpv; a direct media file is played as it is. Run `:checkhealth player` to see what is installed, where the socket lives and how the player is configured.
+
 ## Streaming and service integrations
 
 The plugin delegates URL playback and extraction to mpv and yt-dlp. It does **not** implement private service APIs or bypass login, subscription, DRM, or playback restrictions. A service URL works only if mpv/yt-dlp supports it and the user's account/session is authorized as required. For example, Spotify playback is not the same as opening a public web URL: Spotify's Web API uses OAuth scopes and its player endpoints control an authorized Connect device. This plugin does not currently ship a Spotify account/player adapter.
@@ -119,7 +152,9 @@ The search and download commands pass each argument directly to the child proces
 
 ## Lyrics, karaoke, and translation
 
-`:PlayerLyricsSearch` searches LRCLIB and the JioSaavn song catalog; lyrics for every search result are resolved through LRCLIB synced LRC/plain text. JioSaavn is an unofficial catalog integration; selecting one of its songs looks up lyrics through LRCLIB metadata, and its own lyric availability varies. Only an explicit `:PlayerLyrics <ISRC>` request uses the documented lrc.red `.ttml` route; the plugin does not invent an lrc.red search endpoint. TTML timed spans become word karaoke; line-timed LRC highlights the active line.
+`:PlayerLyricsSearch` searches LRCLIB, MusicBrainz, the iTunes catalogue and the JioSaavn song catalog at the same time; the results are merged and de-duplicated. JioSaavn is an unofficial catalog integration; selecting one of its songs looks up lyrics through the other services, and its own lyric availability varies. lrc.red is keyed by ISRC and has no search API of its own, so it is reached through the ISRC of a match: LRCLIB and MusicBrainz know the ISRC of a recording, and the iTunes results are matched against LRCLIB by title and artist. The lrc.red document is a TTML file, so its word level timings drive the karaoke highlight; when lrc.red does not know the recording, the synced LRC or the plain lyrics of LRCLIB are used. An explicit `:PlayerLyrics <ISRC>` request fetches the TTML of lrc.red directly.
+
+TTML timed spans become word karaoke; line-timed LRC highlights the active line.
 
 The lyric float follows playback. Press `t` to translate and `f` to toggle auto-follow. Translation uses the configurable LibreTranslate-compatible endpoint. The default is local-only; if you configure a remote endpoint, lyric text is sent to that translation service. It refuses to attach a translation if the translator changes the number of lyric lines, avoiding timing corruption. Translation quality and available languages depend on that provider.
 

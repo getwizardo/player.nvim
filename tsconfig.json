@@ -1,15 +1,22 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "rootDir": "src",
-    "outDir": "dist",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "strict": true,
-    "declaration": false,
-    "sourceMap": false,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": false,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "noEmit": true,
+    "types": ["node"],
+    "baseUrl": "src",
+    "paths": {
+      "player": ["lua/player/init.ts"],
+      "player/*": ["lua/player/*"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

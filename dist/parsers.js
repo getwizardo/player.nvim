@@ -1,44 +1,95 @@
-function decodeXml(value) {
+/**
+ * The TTML and LRC parsers.
+ *
+ * They are deliberately small: the helper only needs the timed lines and the
+ * word level timings of a karaoke document.
+ */
+/** Decode the XML entities of a text. */
+export function decodeXml(value) {
     return value
-        .replace(/&#x([\da-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-        .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(parseInt(decimal, 10)))
-        .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+        .replace(/&#x([\da-f]+);/gi, (_, hex) => safeCodePoint(parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (_, decimal) => safeCodePoint(parseInt(decimal, 10)))
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&amp;/g, "&");
 }
-function xmlAttribute(attrs, key) {
+/** The character of a code point, or a replacement character. */
+function safeCodePoint(code) {
+    if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
+        return "�";
+    }
+    return String.fromCodePoint(code);
+}
+/** Read an attribute of a tag. */
+export function xmlAttribute(attrs, key) {
     const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return attrs.match(new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*["']([^"']*)["']`, "i"))?.[1];
+    const match = attrs.match(new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i"));
+    return match?.[2];
 }
-function timing(value, frameRate, tickRate) {
-    if (!value)
+/** Convert a TTML time expression into seconds. */
+export function timing(value, frameRate, tickRate) {
+    if (!value) {
         return 0;
+    }
     const clock = value.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/);
-    if (clock)
+    if (clock) {
         return Number(clock[1]) * 3600 + Number(clock[2]) * 60 + Number(clock[3]);
+    }
     const frames = value.match(/^(\d+):(\d+):(\d+):(\d+(?:\.\d+)?)$/);
-    if (frames)
-        return Number(frames[1]) * 3600 + Number(frames[2]) * 60 + Number(frames[3]) + Number(frames[4]) / frameRate;
+    if (frames) {
+        return (Number(frames[1]) * 3600 +
+            Number(frames[2]) * 60 +
+            Number(frames[3]) +
+            Number(frames[4]) / (frameRate || 30));
+    }
     const offset = value.match(/^(\d+(?:\.\d+)?)(ms|s|t)$/);
     if (offset) {
         const amount = Number(offset[1]);
-        return offset[2] === "ms" ? amount / 1000 : offset[2] === "t" ? amount / tickRate : amount;
+        if (offset[2] === "ms") {
+            return amount / 1000;
+        }
+        if (offset[2] === "t") {
+            return amount / (tickRate || 30);
+        }
+        return amount;
     }
     return Number(value) || 0;
 }
-function plainText(value) {
-    return decodeXml(value.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+/** The readable text of a fragment of XML. */
+export function plainText(value) {
+    return decodeXml(value.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " "))
+        .replace(/\s+/g, " ")
+        .trim();
 }
-function tagBlocks(xml, localName) {
-    const tag = new RegExp(`<([\\w.-]+:)?${localName}\\b([^>]*)>([\\s\\S]*?)<\\/([\\w.-]+:)?${localName}\\s*>`, "gi");
-    return [...xml.matchAll(tag)].map((match) => ({ attrs: match[2], body: match[3] }));
+/** Every block of a tag, self closing tags included. */
+export function tagBlocks(xml, localName) {
+    const name = localName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const paired = new RegExp(`<([\\w.-]+:)?${name}\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/([\\w.-]+:)?${name}\\s*>)`, "gi");
+    const blocks = [];
+    for (const match of xml.matchAll(paired)) {
+        const attrs = match[2] ?? "";
+        const body = match[3] ?? "";
+        if (!body && !/\/>\s*$/.test(match[0])) {
+            // A self closing tag: keep the attributes, there is no body.
+            continue;
+        }
+        blocks.push({ attrs, body });
+    }
+    return blocks;
 }
+/** Parse a TTML document into timed lyric lines. */
 export function parseTtml(xml) {
     const rootAttrs = xml.match(/<(?:[\w.-]+:)?tt\b([^>]*)>/i)?.[1] ?? "";
     const rateMatch = xmlAttribute(rootAttrs, "ttp:frameRate")?.match(/^(\d+)(?:\s+(\d+)\s+(\d+))?$/);
-    const frameRate = rateMatch ? Number(rateMatch[1]) * (rateMatch[2] ? Number(rateMatch[2]) / Number(rateMatch[3]) : 1) : 30;
+    const frameRate = rateMatch
+        ? Number(rateMatch[1]) * (rateMatch[2] ? Number(rateMatch[2]) / Number(rateMatch[3]) : 1)
+        : 30;
     const tickRate = Number(xmlAttribute(rootAttrs, "ttp:tickRate")) || frameRate;
     const rows = [];
-    for (const paragraph of tagBlocks(xml, "p")) {
+    const paragraphs = tagBlocks(xml, "p");
+    for (const paragraph of paragraphs) {
         const start = timing(xmlAttribute(paragraph.attrs, "begin"), frameRate, tickRate);
         const finish = timing(xmlAttribute(paragraph.attrs, "end"), frameRate, tickRate);
         const words = [];
@@ -60,25 +111,49 @@ export function parseTtml(xml) {
             if (words.length) {
                 row.words = words.sort((a, b) => a.start - b.start);
                 row.words.forEach((word, index) => {
-                    if (word.finish === 0)
+                    if (word.finish === 0) {
                         word.finish = row.words?.[index + 1]?.start ?? finish;
+                    }
                 });
             }
             rows.push(row);
         }
     }
-    return rows.sort((a, b) => a.start - b.start);
+    rows.sort((a, b) => a.start - b.start);
+    // A paragraph without an end inherits the start of the next one.
+    for (let index = 0; index < rows.length - 1; index += 1) {
+        if (!rows[index].finish) {
+            rows[index].finish = rows[index + 1].start;
+        }
+    }
+    return rows;
 }
+/** Parse a synced LRC document into timed lyric lines. */
 export function parseLrc(lrc) {
     const rows = [];
     for (const line of lrc.split(/\r?\n/)) {
-        const stamp = line.match(/^\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\](.*)$/);
-        if (!stamp)
+        const stamps = [];
+        let rest = line;
+        // A line may carry several timestamps, for example [00:01.00][01:00.00] text
+        while (true) {
+            const stamp = rest.match(/^\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/);
+            if (!stamp) {
+                break;
+            }
+            const fraction = stamp[3] ? Number(`0.${stamp[3]}`) : 0;
+            stamps.push(Number(stamp[1]) * 60 + Number(stamp[2]) + fraction);
+            rest = rest.slice(stamp[0].length);
+        }
+        if (!stamps.length) {
             continue;
-        const fraction = stamp[3] ? Number(`0.${stamp[3]}`) : 0;
-        const text = stamp[4].trim();
-        if (text)
-            rows.push({ start: Number(stamp[1]) * 60 + Number(stamp[2]) + fraction, finish: 0, text });
+        }
+        const text = rest.trim();
+        if (!text) {
+            continue;
+        }
+        for (const start of stamps) {
+            rows.push({ start, finish: 0, text });
+        }
     }
     return rows.sort((a, b) => a.start - b.start);
 }

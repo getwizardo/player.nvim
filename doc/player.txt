@@ -12,11 +12,13 @@ CONTENTS                                                   *player.nvim-contents
 ===============================================================================
 1. OVERVIEW                                                *player.nvim-overview*
 
-player.nvim is a Lua Neovim interface to mpv with a TypeScript helper for
-search, lyric parsing, and translation. It has a rounded now-playing dashboard,
-LRCLIB/JioSaavn catalog search, word-level TTML karaoke highlighting, a live
-mpv/FFmpeg spectrum window, local media and supported streaming URLs, a local
-picker and FIFO queue, yt-dlp search/download, configurable EQ, and filters.
+player.nvim is a Neovim interface to mpv, written entirely in TypeScript. The
+Neovim side is compiled to Lua and the lyrics helper is compiled to
+JavaScript; both are committed, so no build step is needed to install the
+plugin. It has a rounded now-playing dashboard, LRCLIB/JioSaavn catalog
+search, word-level TTML karaoke highlighting, a live mpv/FFmpeg spectrum
+window, local media and supported streaming URLs, a local picker and FIFO
+queue, yt-dlp search/download, configurable EQ, and filters.
 
 Neovim does not decode audio. mpv handles playback; FFmpeg filters handle EQ,
 filtering, and the visualizer. JioSaavn metadata search uses an unofficial
@@ -29,6 +31,10 @@ Requires Neovim 0.10+, mpv, and yt-dlp for its search/download features.
 Node.js 18+ is needed for lyric catalog search and translation. Telescope.nvim
 is optional. curl is needed only for direct lrc.red TTML fetches when Node is
 not used. FFmpeg with showcqt is needed for the spectrum window.
+
+The compiled plugin and the compiled helper are committed, so installing the
+repository is enough; Node.js is only needed at runtime for the lyric search
+and the translation.
 
 Call setup from init.lua after installing the plugin:
 >
@@ -57,13 +63,13 @@ EQ defaults to ten zero-gain bands centered at 31, 63, 125, 250, 500, 1000,
 :PlayerNext                  Play the next queued item.
 :PlayerPrev                  Play the previous item (or seek to start).
 :PlayerStop                  Stop current playback.
-:PlayerSearch [query]        Search yt-dlp extractors and choose a result.
+:PlayerSearch [query]        Search yt-dlp and the JioSaavn catalog, choose a result.
 :PlayerJioSaavn [query]      Search/play JioSaavn catalog permalinks.
 :PlayerDownload [url]        Download/extract audio from an HTTP(S) URL.
 :PlayerEQ [on|off]           Enter a custom 10-band EQ curve, or toggle it.
 :PlayerFilter [type]         Select/configure lowpass, highpass, bandpass, off.
 :PlayerLyrics [ISRC]         Fetch TTML lyrics from lrc.red by ISRC.
-:PlayerLyricsSearch [query]  Search LRCLIB and JioSaavn song metadata.
+:PlayerLyricsSearch [query]  Search LRCLIB, MusicBrainz, iTunes and JioSaavn.
 :PlayerTranslate [language]  Translate open lyrics using LibreTranslate.
 :PlayerVisualize             Toggle mpv's live spectrum window.
 :PlayerStatus                Show mpv title and play position.
@@ -76,17 +82,28 @@ file and <C-q> enqueues it; :PlayerQueue opens a queue-focused picker.
 ===============================================================================
 4. LYRICS                                                    *player.nvim-lyrics*
 
-The lyric search combines LRCLIB records with JioSaavn catalog matches; lyrics
-for every search result are resolved through LRCLIB synced/plain fields. A
-selected JioSaavn result is matched to LRCLIB by track metadata. Only an explicit
-:PlayerLyrics <ISRC> request uses lrc.red TTML; :PlayerLyrics with no argument
-tries mpv metadata ISRC, then prompts for one.
+The lyric search asks LRCLIB, MusicBrainz, the iTunes catalogue and the
+JioSaavn catalog at the same time; the results are merged and de-duplicated.
+lrc.red is keyed by ISRC and has no search API, so it is reached through the
+ISRC of a match: LRCLIB and MusicBrainz know the ISRC of a recording, and the
+iTunes results are matched against LRCLIB by title and artist. The lrc.red
+document is a TTML file, so its word level timings drive the karaoke
+highlight. A selected JioSaavn result is matched to the other services by
+track metadata. Only an explicit :PlayerLyrics <ISRC> request uses lrc.red
+TTML; :PlayerLyrics with no argument tries mpv metadata ISRC, then prompts
+for one.
 TTML spans drive word karaoke; synced LRC drives line karaoke. Press t in the
 lyrics float to translate and f to toggle follow. Translation sends lyric text
 to the configured LibreTranslate-compatible URL (localhost by default).
 
 The spectrum visualization is rendered in mpv's own video window, not inside
 the Neovim float. It requires FFmpeg's showcqt filter.
+
+When a track does not play, the player reports the answer of mpv: "mpv could
+not play <source>", "mpv could not load the file" or "Could not reach the mpv
+IPC socket" (the plugin then starts a plain mpv process, so the music plays
+without remote control). A link to a web page is resolved with yt-dlp before
+it is handed to mpv. Run :checkhealth player for an overview of the setup.
 
 ===============================================================================
 5. REQUIREMENTS AND LIMITS                           *player.nvim-requirements*
@@ -97,8 +114,12 @@ filters. Extractor and account availability is controlled by mpv/yt-dlp and the
 source service. A service requiring its own app/API authorization flow is not
 automatically integrated just because it has a web URL.
 
-The TypeScript helper is split across src/*.ts modules. src/lyrics.ts is the
-public entry and CLI; compiled runtime modules are emitted under dist/. Rebuild
-with npm ci && npm run build. Run parser tests with npm test.
+The sources live in src/: src/lua/player holds the plugin, src/plugin holds
+the command registration, src/node holds the helper, and src/tests holds the
+test suite. The plugin is compiled to lua/ and plugin/, the helper to dist/.
+
+Rebuild with npm ci && npm run build, check the types with npm run
+typecheck, and run the tests with npm test. npm run check:generated fails when
+the committed output is out of date.
 
  vim:tw=78:ts=8:noet:ft=help:norl:

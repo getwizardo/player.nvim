@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "baseUrl": "src",
+    "paths": {
+      "player": [
+        "lua/player/init.ts"
+      ],
+      "player/*": [
+        "lua/player/*"
+      ]
+    },
+    "rootDir": "src/lua",
+    "outDir": "lua",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": false,
+    "sourceMap": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": [
+    "src/lua/**/*.ts"
+  ],
+  "exclude": [
+    "src/lua/**/*.test.ts"
+  ]
+}

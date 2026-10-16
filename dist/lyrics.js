@@ -1,11 +1,14 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { main } from "./cli.js";
-export { parseLrc, parseTtml } from "./parsers.js";
-export { fetchTtml } from "./lrc-red.js";
-export { searchLyrics } from "./search.js";
-export { getLyrics } from "./lyrics-service.js";
-export { translateLines } from "./translator.js";
+export { parseLrc, parseTtml, plainText, tagBlocks, timing, xmlAttribute, decodeXml } from "./parsers.js";
+export { fetchTtml, isValidIsrc } from "./lrc-red.js";
+export { searchLyrics, dedupe } from "./search.js";
+export { getLyrics, plainLines } from "./lyrics-service.js";
+export { translateLines, translateLyricLines, translatorEndpoint } from "./translator.js";
+export { searchJioSaavn, artistsOf, jiosaavnBase } from "./providers/jiosaavn.js";
+export { searchLrclib, getLrclibRecord, lookupLrclib, toCandidate } from "./providers/lrclib.js";
+export { HttpError, USER_AGENT, getJson, request } from "./http.js";
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
     main().catch((error) => {
         process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
