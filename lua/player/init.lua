@@ -1,7 +1,8 @@
 local M = {}
 local config = require("player.config")
 local mpv = require("player.mpv")
-local queue, current = {}, 0
+local queue, current, history = {}, 0, {}
+local shuffle_enabled, repeat_mode = false, "off"
 
 local function notify(text, level)
   vim.notify(text, level or vim.log.levels.INFO, { title = "player.nvim" })
@@ -15,16 +16,30 @@ local function valid_source(source)
   return nil
 end
 
-local function play_index(index)
+local function play_index(index, from_history)
   local source = queue[index]
   if not source then return end
+  if current > 0 and current ~= index and not from_history then history[#history + 1] = current end
   current = index
   mpv.play(source)
-  notify("Playing " .. vim.fn.fnamemodify(source:gsub("[?#].*$", ""), ":t"))
+  local label = vim.fn.fnamemodify(source:gsub("[?#].*$", ""), ":t")
+  if label == "" then label = source end
+  notify("Playing " .. label)
+end
+
+local function next_index()
+  if shuffle_enabled and #queue > 1 then
+    local index = current
+    while index == current do index = math.random(#queue) end
+    return index
+  end
+  if current < #queue then return current + 1 end
+  if repeat_mode == "queue" and #queue > 0 then return 1 end
 end
 
 function M.setup(options)
   config.setup(options)
+  math.randomseed((vim.uv or vim.loop).hrtime() % 2147483647)
   local maps = config.options.keymaps
   vim.keymap.set("n", maps.play_pause, M.toggle_pause, { desc = "Player: play/pause" })
   vim.keymap.set("n", maps.next, M.next, { desc = "Player: next" })
@@ -39,7 +54,7 @@ function M.play(source)
     notify("Not a readable local file or a URL: " .. tostring(source), vim.log.levels.ERROR)
     return
   end
-  queue, current = { resolved }, 1
+  queue, current, history = { resolved }, 0, {}
   play_index(1)
 end
 
@@ -55,6 +70,54 @@ function M.add_to_queue(paths)
   if not first_added then notify("No playable files selected.", vim.log.levels.WARN); return end
   notify(string.format("Added %d track(s) to the queue.", #queue - first_added + 1))
   if current == 0 then play_index(first_added) end
+end
+
+function M.queue_add(source)
+  local resolved = valid_source(source)
+  if not resolved then
+    notify("Not a readable local file or a URL: " .. tostring(source), vim.log.levels.ERROR)
+    return
+  end
+  M.add_to_queue({ resolved })
+end
+
+function M.queue_info()
+  return { count = #queue, current = current, shuffle = shuffle_enabled, repeat_mode = repeat_mode }
+end
+
+function M.queue_list()
+  if #queue == 0 then notify("The player queue is empty.", vim.log.levels.WARN); return end
+  local items = {}
+  for index, source in ipairs(queue) do
+    local label = vim.fn.fnamemodify(source:gsub("[?#].*$", ""), ":t")
+    if label == "" then label = source end
+    items[index] = string.format("%s %02d. %s", index == current and "▶" or " ", index, label)
+  end
+  vim.ui.select(items, { prompt = "Player queue · " .. #queue .. " track(s)" }, function(_, index)
+    if index then play_index(index) end
+  end)
+end
+
+function M.queue_clear()
+  queue, current, history = {}, 0, {}
+  if mpv.is_alive() then mpv.stop() end
+  notify("Queue cleared.")
+end
+
+function M.toggle_shuffle(enabled)
+  shuffle_enabled = enabled == nil and not shuffle_enabled or enabled == true
+  notify("Shuffle " .. (shuffle_enabled and "on" or "off") .. ".")
+  return shuffle_enabled
+end
+
+function M.cycle_repeat(mode)
+  if mode and mode ~= "off" and mode ~= "queue" and mode ~= "track" then
+    notify("Repeat mode must be off, queue, or track.", vim.log.levels.ERROR)
+    return repeat_mode
+  end
+  repeat_mode = mode or (repeat_mode == "off" and "queue" or (repeat_mode == "queue" and "track" or "off"))
+  notify("Repeat " .. repeat_mode .. ".")
+  return repeat_mode
 end
 
 function M.pick_local(append)
@@ -108,13 +171,27 @@ end
 function M.toggle_pause() mpv.pause() end
 function M.stop() mpv.stop() end
 function M.next()
-  if current < #queue then play_index(current + 1) else notify("End of queue.", vim.log.levels.WARN) end
+  local index = next_index()
+  if index then play_index(index) else notify("End of queue.", vim.log.levels.WARN) end
 end
 function M.previous()
-  if current > 1 then play_index(current - 1) else mpv.seek(0) end
+  if shuffle_enabled and #history > 0 then
+    local index = table.remove(history)
+    play_index(index, true)
+  elseif current > 1 then
+    play_index(current - 1)
+  else
+    mpv.seek(0)
+  end
 end
 function M._on_end_file(message)
-  if message and message.reason == "eof" and current < #queue then play_index(current + 1) end
+  if not message or message.reason ~= "eof" then return end
+  if repeat_mode == "track" and queue[current] then
+    play_index(current, true)
+    return
+  end
+  local index = next_index()
+  if index then play_index(index) else notify("Queue finished.", vim.log.levels.INFO) end
 end
 function M.shutdown() mpv.shutdown() end
 

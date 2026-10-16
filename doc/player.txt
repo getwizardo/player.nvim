@@ -45,9 +45,14 @@ EQ defaults to ten zero-gain bands centered at 31, 63, 125, 250, 500, 1000,
 ===============================================================================
 3. COMMANDS                                                *player.nvim-commands*
 
-:Player [source]             Open the command menu, or play source.
+:Player [source]             Open the dashboard, or play source.
 :PlayerPlay [source]         Pick a local file, or play a file/URL.
 :PlayerQueue                 Pick and enqueue a local file.
+:PlayerQueueAdd [source]     Enqueue a local file or URL (picker if omitted).
+:PlayerQueueList             Browse the queue and play a selected item.
+:PlayerQueueClear            Stop playback and clear the queue.
+:PlayerShuffle [on|off]      Toggle or set random next-track selection.
+:PlayerRepeat [mode]         Cycle repeat, or set off, queue, or track.
 :PlayerPause                 Toggle pause.
 :PlayerNext                  Play the next queued item.
 :PlayerPrev                  Play the previous item (or seek to start).
@@ -71,10 +76,11 @@ file and <C-q> enqueues it; :PlayerQueue opens a queue-focused picker.
 ===============================================================================
 4. LYRICS                                                    *player.nvim-lyrics*
 
-The lyric search combines LRCLIB records with JioSaavn catalog matches. Lyrics
-are fetched from lrc.red by a known ISRC or from LRCLIB's synced/plain fields;
-JioSaavn lyric availability varies, so selected catalog results are matched to
-LRCLIB by metadata. :PlayerLyrics first tries mpv metadata ISRC, then prompts.
+The lyric search combines LRCLIB records with JioSaavn catalog matches; lyrics
+for every search result are resolved through LRCLIB synced/plain fields. A
+selected JioSaavn result is matched to LRCLIB by track metadata. Only an explicit
+:PlayerLyrics <ISRC> request uses lrc.red TTML; :PlayerLyrics with no argument
+tries mpv metadata ISRC, then prompts for one.
 TTML spans drive word karaoke; synced LRC drives line karaoke. Press t in the
 lyrics float to translate and f to toggle follow. Translation sends lyric text
 to the configured LibreTranslate-compatible URL (localhost by default).
@@ -91,7 +97,8 @@ filters. Extractor and account availability is controlled by mpv/yt-dlp and the
 source service. A service requiring its own app/API authorization flow is not
 automatically integrated just because it has a web URL.
 
-The TypeScript helper source is src/lyrics.ts; rebuild with npm ci && npm run
-build. Run parser tests with npm test.
+The TypeScript helper is split across src/*.ts modules. src/lyrics.ts is the
+public entry and CLI; compiled runtime modules are emitted under dist/. Rebuild
+with npm ci && npm run build. Run parser tests with npm test.
 
  vim:tw=78:ts=8:noet:ft=help:norl:

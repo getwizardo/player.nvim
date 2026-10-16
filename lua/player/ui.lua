@@ -46,6 +46,8 @@ local function draw()
   local pulse = pulses[(state.frame % 4) + 1]
   local title = state.title:gsub("\n", " ")
   local artist = state.artist:gsub("\n", " ")
+  local queue = require("player").queue_info()
+  local queue_state = string.format("  QUEUE  %d/%d  ·  %s  ·  repeat %s", queue.current, queue.count, queue.shuffle and "shuffle" or "ordered", queue.repeat_mode)
   local lines = {
     "  PLAYER  ·  MUSIC FOR THE MOMENT",
     "",
@@ -60,10 +62,10 @@ local function draw()
     "",
     "  EQ CURVE",
     "  " .. eq_bar(),
-    "",
-    "  [p] play/pause    [n] next    [b] back    [l] lyrics    [/] search",
+    queue_state,
+    "  [p] play/pause    [n] next    [b] back    [Q] queue    [/] search",
     "  [j] JioSaavn      [v] spectrum    [f] filter    [e] equalizer",
-    "  [r] local files   [q] close",
+    "  [r] local files   [s] shuffle    [R] repeat   [q] close",
   }
   vim.bo[state.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
@@ -76,6 +78,7 @@ local function draw()
   vim.api.nvim_buf_add_highlight(state.buf, dashboard_ns, "PlayerMuted", 9, 0, -1)
   vim.api.nvim_buf_add_highlight(state.buf, dashboard_ns, "PlayerEyebrow", 11, 0, -1)
   vim.api.nvim_buf_add_highlight(state.buf, dashboard_ns, "PlayerAccent", 12, 0, -1)
+  vim.api.nvim_buf_add_highlight(state.buf, dashboard_ns, "PlayerAccent", 13, 0, -1)
   vim.api.nvim_buf_add_highlight(state.buf, dashboard_ns, "PlayerMuted", 14, 0, -1)
   vim.api.nvim_buf_add_highlight(state.buf, dashboard_ns, "PlayerMuted", 15, 0, -1)
   vim.api.nvim_buf_add_highlight(state.buf, dashboard_ns, "PlayerMuted", 16, 0, -1)
@@ -129,6 +132,9 @@ function M.open()
   map("v", function() require("player.mpv").visualize() end, "Toggle spectrum window")
   map("f", function() require("player").filter() end, "Configure filter")
   map("e", function() require("player").eq() end, "Configure equalizer")
+  map("Q", function() require("player").queue_list() end, "Browse player queue")
+  map("s", function() require("player").toggle_shuffle() end, "Toggle queue shuffle")
+  map("R", function() require("player").cycle_repeat() end, "Cycle repeat mode")
   map("r", function() close(); require("player").pick_local() end, "Pick local audio")
   state.timer = (vim.uv or vim.loop).new_timer()
   state.timer:start(0, 850, vim.schedule_wrap(poll))

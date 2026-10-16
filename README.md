@@ -9,7 +9,7 @@ A music player for Neovim, written in Lua with a TypeScript lyrics/search/transl
 - LRCLIB + JioSaavn-catalog lyrics search; direct ISRC-based TTML from [lrc.red](https://lrc.red); line-synced LRC and plain-lyrics fallback.
 - Karaoke view with word-level TTML timing where supplied, current-line follow, optional translation rows and a persistent dark, rounded Neovim UI.
 - Real-time mpv/FFmpeg `showcqt` spectrum in mpv's own video window (separate from the Neovim dashboard).
-- Custom 10-band EQ, low-pass/high-pass/band-pass filters, local picker, FIFO queue, yt-dlp search/download, and playback controls.
+- Custom 10-band EQ, low-pass/high-pass/band-pass filters, local picker, selectable in-memory queue, shuffle/history, repeat modes, yt-dlp search/download, and playback controls.
 - TypeScript helper (`dist/lyrics.js`) handles search, TTML/LRC parsing, and translation. Direct lrc.red TTML fetch retains a curl fallback; expanded search/translation needs Node.js.
 
 ## Requirements
@@ -28,6 +28,13 @@ With lazy.nvim:
 ```lua
 {
   "getwizardo/player.nvim",
+  cmd = {
+    "Player", "PlayerPlay", "PlayerPause", "PlayerStop", "PlayerNext", "PlayerPrev",
+    "PlayerQueue", "PlayerQueueAdd", "PlayerQueueList", "PlayerQueueClear",
+    "PlayerShuffle", "PlayerRepeat", "PlayerSearch", "PlayerDownload", "PlayerEQ",
+    "PlayerFilter", "PlayerLyrics", "PlayerLyricsSearch", "PlayerTranslate",
+    "PlayerJioSaavn", "PlayerVisualize", "PlayerStatus", "PlayerQuit",
+  },
   config = function()
     require("player").setup({
       download_dir = vim.fn.expand("~/Music"),
@@ -39,7 +46,7 @@ With lazy.nvim:
 
 With a native package manager, put this repository on `runtimepath`, then call `require("player").setup()` in your config. `plugin/player.lua` registers the `:Player*` commands automatically.
 
-The TypeScript source is in `src/lyrics.ts`, with its compiled helper in `dist/lyrics.js`. To rebuild or run its parser tests:
+The TypeScript helper is split into focused `.ts` modules under `src/` (`parsers`, lyric/provider services, translation, types, and CLI). `src/lyrics.ts` is the public entry/barrel; the compiled entry is `dist/lyrics.js`, with its sibling runtime modules in `dist/`. To rebuild or run parser tests:
 
 ```sh
 npm ci
@@ -54,6 +61,11 @@ npm test
 :Player path/to/song.flac     " play local file
 :PlayerPlay https://...       " play an mpv-supported URL
 :PlayerQueue                  " pick a local file and enqueue it
+:PlayerQueueAdd path/song.flac " enqueue a file or URL
+:PlayerQueueList               " browse and play the queue
+:PlayerQueueClear              " stop and clear the queue
+:PlayerShuffle                 " toggle shuffle (also accepts on/off)
+:PlayerRepeat                  " cycle off → queue → track
 :PlayerSearch                 " search with yt-dlp
 :PlayerSearch artist song     " search yt-dlp sources
 :PlayerJioSaavn artist song    " search/play a JioSaavn result
@@ -77,7 +89,7 @@ npm test
 :PlayerQuit
 ```
 
-`:PlayerEQ` accepts ten values in ascending frequency order: 31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, and 16000 Hz. Values are clamped/validated within −12 to +12 dB. The filter command accepts `lowpass`, `highpass`, `bandpass`, or `off` and validates its frequency before applying it.
+`:PlayerEQ` accepts ten values in ascending frequency order: 31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, and 16000 Hz. Values are clamped/validated within −12 to +12 dB. The filter command accepts `lowpass`, `highpass`, `bandpass`, or `off` and validates its frequency before applying it. `:PlayerQueueList` opens a selectable queue; choose an entry to play it. `:PlayerShuffle [on|off]` toggles random next-track selection (and keeps a back-history), while `:PlayerRepeat [off|queue|track]` cycles or sets end-of-track repeat behavior. `:PlayerQueueClear` stops playback and removes the queue.
 
 Example setup with custom initial values and keymaps:
 
@@ -107,7 +119,7 @@ The search and download commands pass each argument directly to the child proces
 
 ## Lyrics, karaoke, and translation
 
-`:PlayerLyricsSearch` searches LRCLIB and the JioSaavn song catalog, then prefers lrc.red TTML for search records with an ISRC and otherwise uses LRCLIB synced LRC/plain text. JioSaavn is an unofficial catalog integration; selecting a JioSaavn item for lyrics resolves the song against LRCLIB metadata when available. Its own lyric availability varies. Direct `:PlayerLyrics <ISRC>` uses the documented lrc.red `.ttml` route; the plugin does not invent an lrc.red search endpoint. TTML timed spans become word karaoke; line-timed LRC highlights the active line.
+`:PlayerLyricsSearch` searches LRCLIB and the JioSaavn song catalog; lyrics for every search result are resolved through LRCLIB synced LRC/plain text. JioSaavn is an unofficial catalog integration; selecting one of its songs looks up lyrics through LRCLIB metadata, and its own lyric availability varies. Only an explicit `:PlayerLyrics <ISRC>` request uses the documented lrc.red `.ttml` route; the plugin does not invent an lrc.red search endpoint. TTML timed spans become word karaoke; line-timed LRC highlights the active line.
 
 The lyric float follows playback. Press `t` to translate and `f` to toggle auto-follow. Translation uses the configurable LibreTranslate-compatible endpoint. The default is local-only; if you configure a remote endpoint, lyric text is sent to that translation service. It refuses to attach a translation if the translator changes the number of lyric lines, avoiding timing corruption. Translation quality and available languages depend on that provider.
 
