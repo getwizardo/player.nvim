@@ -64,7 +64,7 @@ export async function getLyrics(candidate: LyricCandidate): Promise<LyricsAnswer
     lines = plainLines(record.plainLyrics);
   }
   if (!lines.length) {
-    throw new Error("No lyric text is available for this result.");
+    throw new Error("None of the lyric services knows this track; the lrc.red TTML and the LRCLIB lyrics are empty.");
   }
   const resolved: LyricCandidate = {
     ...candidate,

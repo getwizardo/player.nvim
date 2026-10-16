@@ -35,10 +35,11 @@ With lazy.nvim:
   "getwizardo/player.nvim",
   cmd = {
     "Player", "PlayerPlay", "PlayerPause", "PlayerStop", "PlayerNext", "PlayerPrev",
-    "PlayerQueue", "PlayerQueueAdd", "PlayerQueueList", "PlayerQueueClear",
-    "PlayerShuffle", "PlayerRepeat", "PlayerSearch", "PlayerDownload", "PlayerEQ",
-    "PlayerFilter", "PlayerLyrics", "PlayerLyricsSearch", "PlayerTranslate",
-    "PlayerJioSaavn", "PlayerVisualize", "PlayerStatus", "PlayerQuit",
+    "PlayerSeek", "PlayerVolume", "PlayerQueue", "PlayerQueueAdd", "PlayerQueueList",
+    "PlayerQueueClear", "PlayerQueueRemove", "PlayerShuffle", "PlayerRepeat",
+    "PlayerSearch", "PlayerDownload", "PlayerEQ", "PlayerFilter", "PlayerLyrics",
+    "PlayerLyricsSearch", "PlayerTranslate", "PlayerJioSaavn", "PlayerVisualize",
+    "PlayerStatus", "PlayerQuit",
   },
   config = function()
     require("player").setup({
@@ -91,13 +92,16 @@ The Lua side is tested with a small harness (`src/tests/lua-harness.ts`) that st
 :PlayerSearch artist song     " search yt-dlp sources
 :PlayerJioSaavn artist song    " search/play a JioSaavn result
 :PlayerDownload https://...   " extract/download audio
-:PlayerLyricsSearch song name " search LRCLIB + JioSaavn catalog
+:PlayerLyricsSearch song name " search LRCLIB + MusicBrainz + iTunes + JioSaavn
 :PlayerTranslate vi            " translate the open karaoke lyrics
 :PlayerVisualize               " live FFmpeg spectrum in mpv
 :PlayerPause
 :PlayerNext
 :PlayerPrev
 :PlayerStop
+:PlayerSeek 90                 " jump to a position in seconds
+:PlayerVolume -5               " change the volume by a number of steps
+:PlayerQueueRemove 2           " remove the second track of the queue
 :PlayerEQ                     " enter ten comma-separated dB gains
 :PlayerEQ on                  " enable current EQ curve
 :PlayerEQ off
@@ -110,7 +114,7 @@ The Lua side is tested with a small harness (`src/tests/lua-harness.ts`) that st
 :PlayerQuit
 ```
 
-`:PlayerEQ` accepts ten values in ascending frequency order: 31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, and 16000 Hz. Values are clamped/validated within −12 to +12 dB. The filter command accepts `lowpass`, `highpass`, `bandpass`, or `off` and validates its frequency before applying it. `:PlayerQueueList` opens a selectable queue; choose an entry to play it. `:PlayerShuffle [on|off]` toggles random next-track selection (and keeps a back-history), while `:PlayerRepeat [off|queue|track]` cycles or sets end-of-track repeat behavior. `:PlayerQueueClear` stops playback and removes the queue.
+`:PlayerEQ` accepts ten values in ascending frequency order: 31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, and 16000 Hz. Values are clamped/validated within −12 to +12 dB. The filter command accepts `lowpass`, `highpass`, `bandpass`, or `off` and validates its frequency before applying it. `:PlayerQueueList` opens a selectable queue; choose an entry to play it. `:PlayerShuffle [on|off]` toggles random next-track selection (and keeps a back-history), while `:PlayerRepeat [off|queue|track]` cycles or sets end-of-track repeat behavior. `:PlayerQueueClear` stops playback and removes the queue. `:PlayerSearch` asks yt-dlp, the iTunes catalogue and the JioSaavn catalog at the same time; the results of every service are merged into one list.
 
 Example setup with custom initial values and keymaps:
 
