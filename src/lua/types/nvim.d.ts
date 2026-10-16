@@ -224,13 +224,19 @@ interface VimBufferOptions {
   buflisted?: boolean;
 }
 
-/** A libuv timer. */
+/**
+ * A libuv timer.
+ *
+ * The methods of luv take the handle as their first argument, exactly like
+ * the colon calls of Lua (`timer:start(...)`). They are declared as plain
+ * function properties, so that the compiler keeps the handle in the call.
+ */
 /** @noSelf */
 interface VimTimer {
-  start: (interval: number, repeat: number, callback: VimTimerCallback) => void;
-  stop: () => void;
-  close: () => void;
-  is_active: () => boolean;
+  start: (timer: VimTimer, interval: number, repeat: number, callback: VimTimerCallback) => void;
+  stop: (timer: VimTimer) => void;
+  close: (timer: VimTimer) => void;
+  is_active: (timer: VimTimer) => boolean;
 }
 
 /** Timer callback. */
@@ -240,15 +246,20 @@ interface VimTimerCallback {
   (): void;
 }
 
-/** A libuv stream. */
+/**
+ * A libuv stream.
+ *
+ * As with the timer, the handle is the first argument of every method, the
+ * way the colon calls of Lua pass it.
+ */
 /** @noSelf */
 interface VimUvStream {
-  write: (data: string) => void;
-  read_start: (callback: VimUvReadCallback) => void;
-  read_stop: () => void;
-  close: () => void;
-  is_closing: () => boolean;
-  connect: (path: string, callback: VimUvConnectCallback) => void;
+  write: (stream: VimUvStream, data: string) => void;
+  read_start: (stream: VimUvStream, callback: VimUvReadCallback) => void;
+  read_stop: (stream: VimUvStream) => void;
+  close: (stream: VimUvStream) => void;
+  is_closing: (stream: VimUvStream) => boolean;
+  connect: (stream: VimUvStream, path: string, callback: VimUvConnectCallback) => void;
 }
 
 /** Stream read callback. */

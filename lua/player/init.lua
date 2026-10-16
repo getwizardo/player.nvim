@@ -11,6 +11,8 @@ local options = ____config.options
 local ____format = require("player.format")
 local formatClock = ____format.formatClock
 local sourceLabel = ____format.sourceLabel
+local ____helper = require("player.helper")
+local helperCall = ____helper.helperCall
 local ____lua_2Dutil = require("player.lua-util")
 local attempt = ____lua_2Dutil.attempt
 local indexOf = ____lua_2Dutil.indexOf
@@ -241,6 +243,25 @@ local function parseSearchResults(text)
         end
     end
     return entries
+end
+--- Turn an answer of the helper into a list of records.
+local function toRecords(value)
+    if type(value) ~= "table" then
+        return {}
+    end
+    local records = {}
+    local source = value
+    do
+        local index = 0
+        while index < #source do
+            local entry = source[index + 1]
+            if type(entry) == "table" then
+                records[#records + 1] = entry
+            end
+            index = index + 1
+        end
+    end
+    return records
 end
 local function loadModule(name)
     local loaded = attempt(function()
@@ -570,7 +591,7 @@ function ____exports.search(query)
             notify("yt-dlp is required for search.", vim.log.levels.ERROR)
             return
         end
-        notify("Searching yt-dlp and the JioSaavn catalog…")
+        notify("Searching yt-dlp, iTunes and the JioSaavn catalog…")
         local entries = {}
         local pending = 2
         local failure = ""
@@ -586,7 +607,7 @@ function ____exports.search(query)
             vim.ui.select(
                 entries,
                 {
-                    prompt = "Search results · yt-dlp + JioSaavn catalog",
+                    prompt = "Search results · yt-dlp + iTunes + JioSaavn",
                     format_item = function(item)
                         local entry = item
                         local suffix = ""
@@ -637,37 +658,39 @@ function ____exports.search(query)
                 end)
             end
         )
-        lyrics.jiosaavnCandidates(
-            term,
-            function(songs, ____error)
+        helperCall(
+            {"tracks", term},
+            nil,
+            function(value, ____error)
                 if ____error ~= nil then
                     failure = failure == "" and ____error or failure
                 end
+                local songs = toRecords(value)
                 do
                     local index = 0
                     while index < #songs do
                         do
-                            local __continue120
+                            local __continue125
                             repeat
                                 local song = songs[index + 1]
                                 local url = song.url
                                 if type(url) ~= "string" or url == "" then
-                                    __continue120 = true
+                                    __continue125 = true
                                     break
                                 end
                                 local entry = {
                                     title = type(song.title) == "string" and song.title or "Unknown title",
                                     uploader = type(song.artist) == "string" and song.artist or "",
                                     url = url,
-                                    provider = "JioSaavn"
+                                    provider = type(song.provider) == "string" and song.provider or "catalog"
                                 }
                                 if type(song.duration) == "number" then
                                     entry.duration = song.duration
                                 end
                                 push(entries, entry)
-                                __continue120 = true
+                                __continue125 = true
                             until true
-                            if not __continue120 then
+                            if not __continue125 then
                                 break
                             end
                         end
@@ -675,7 +698,9 @@ function ____exports.search(query)
                     end
                 end
                 finish()
-            end
+            end,
+            {PLAYER_JIOSAAVN_API = options().jiosaavn_api},
+            30000
         )
     end
     if query ~= nil and query ~= "" then

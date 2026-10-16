@@ -8,7 +8,7 @@ The Neovim side is compiled from TypeScript to Lua with [typescript-to-lua](http
 
 - Local files, streaming URLs and yt-dlp-supported sources, including JioSaavn links through yt-dlp's JioSaavn extractor.
 - JioSaavn catalog search and play by its public song permalink (the search API is an unofficial third-party wrapper; no direct media URL extraction or DRM workaround is implemented here). The permalink is resolved with yt-dlp before it is played.
-- One search over several sources: yt-dlp (and everything it supports) and the JioSaavn catalog are asked at the same time, and the results are merged into one list.
+- One search over several sources: yt-dlp (and everything it supports), the JioSaavn catalog and the iTunes catalogue are asked at the same time, and the results are merged into one list. A link to a web page is resolved with yt-dlp before it is played.
 - LRCLIB, MusicBrainz and JioSaavn-catalog lyrics search, plus the iTunes catalogue for the tracks no lyric service knows; line-synced LRC and plain-lyrics fallback.
 - Direct ISRC-based TTML from [lrc.red](https://lrc.red); the word level timings of the document drive the karaoke highlight.
 - Karaoke view with word-level TTML timing where supplied, current-line follow, optional translation rows and a persistent dark, rounded Neovim UI.
@@ -191,7 +191,7 @@ See [`doc/player.txt`](doc/player.txt) for the Vim help page.
 
 These upstream references shaped the integration boundaries and commands:
 
-- [lrc.red API docs](https://lrc.red/docs) document direct format URLs such as `/s/<id>.ttml`; the plugin uses that direct route rather than inventing a search API. [LRCLIB API docs](https://lrclib.net/docs) document its searchable `/api/search` records, LRC timestamps, and responsible-client requirements.
+- [lrc.red API docs](https://lrc.red/docs) document direct format URLs such as `/s/<id>.ttml`; the plugin uses that direct route rather than inventing a search API, and reaches it through the ISRC of a match. [LRCLIB API docs](https://lrclib.net/docs) document its searchable `/api/search` records, LRC timestamps, and responsible-client requirements. [MusicBrainz web service](https://musicbrainz.org/doc/MusicBrainz_API/Search) documents the recording search that returns the ISRCs, and the [iTunes search API](https://performance-partners.apple.com/search-api) the catalogue that knows a playable preview.
 - [JioSaavn API docs](https://saavn.sumit.co/docs) describe an **unofficial** catalog wrapper and song-search response; the plugin uses catalog metadata/permalinks only. [yt-dlp's JioSaavn extractor](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/jiosaavn.py) is used to open the permalink when supported.
 - [Neovim Lua guide](https://neovim.io/doc/user/lua-guide/), [`vim.system()` reference](https://neovim.io/doc/user/lua/#vim.system), and [floating-window API](https://neovim.io/doc/user/api/#api-floatwin) inform async process handling, UI, and timed extmark highlighting.
 - [W3C TTML Karaoke extension](https://w3c.github.io/tt-module-karaoke/) describes timed spans for word emphasis. [mpv's JSON IPC and `lavfi-complex`](https://mpv.io/manual/stable/#json-ipc) underpin player control and the spectrum. [FFmpeg audio filters](https://ffmpeg.org/ffmpeg-filters.html#equalizer) define the parametric EQ stages.

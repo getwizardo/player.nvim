@@ -29,10 +29,10 @@ function closePipe()
     local pipe = state.pipe
     if pipe ~= nil then
         attempt(function()
-            pipe.read_stop()
+            pipe.read_stop(pipe)
         end)
-        if not pipe.is_closing() then
-            pipe.close()
+        if not pipe.is_closing(pipe) then
+            pipe.close(pipe)
         end
     end
     state.pipe = nil
@@ -41,8 +41,12 @@ function closePipe()
     state.buffer = ""
 end
 function writeRaw(message)
-    if state.connected and state.pipe ~= nil and not state.pipe.is_closing() then
-        state.pipe.write(vim.json.encode(message) .. "\n")
+    local pipe = state.pipe
+    if state.connected and pipe ~= nil and not pipe.is_closing(pipe) then
+        pipe.write(
+            pipe,
+            vim.json.encode(message) .. "\n"
+        )
         return true
     end
     return false
@@ -117,6 +121,7 @@ function connect(tries)
     local pipe = vim.uv.new_pipe()
     state.pipe = pipe
     pipe.connect(
+        pipe,
         state.socket,
         function(err)
             if err ~= nil and err ~= nil then
@@ -139,22 +144,25 @@ function connect(tries)
             state.connecting = false
             state.failed = false
             state.buffer = ""
-            pipe.read_start(function(readErr, data)
-                if readErr ~= nil and readErr ~= nil then
-                    closePipe()
-                    return
-                end
-                state.buffer = state.buffer .. tostring(data)
-                while true do
-                    local newline = string.find(state.buffer, "\n", 1, true)
-                    if newline == nil then
-                        break
+            pipe.read_start(
+                pipe,
+                function(readErr, data)
+                    if readErr ~= nil and readErr ~= nil then
+                        closePipe()
+                        return
                     end
-                    local line = string.sub(state.buffer, 1, newline - 1)
-                    state.buffer = string.sub(state.buffer, newline + 1)
-                    handleLine(line)
+                    state.buffer = state.buffer .. tostring(data)
+                    while true do
+                        local newline = string.find(state.buffer, "\n", 1, true)
+                        if newline == nil then
+                            break
+                        end
+                        local line = string.sub(state.buffer, 1, newline - 1)
+                        state.buffer = string.sub(state.buffer, newline + 1)
+                        handleLine(line)
+                    end
                 end
-            end)
+            )
             local waiting = state.waiting
             state.waiting = {}
             do

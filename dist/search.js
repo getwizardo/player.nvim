@@ -78,3 +78,35 @@ export async function searchLyrics(query) {
     }
     return dedupe(candidates).slice(0, 40);
 }
+/** Keep the candidates that come with a playable link. */
+export function playableOnly(candidates) {
+    return candidates.filter((candidate) => Boolean(candidate.url));
+}
+/**
+ * Search the catalogues that know a playable track.
+ *
+ * The iTunes catalogue and the JioSaavn catalog return a link for every
+ * song; the link of the iTunes preview is a short audio file, the link of
+ * JioSaavn is the permalink of the song.
+ */
+export async function searchTracks(query) {
+    const term = query.trim();
+    if (!term) {
+        throw new Error("Enter a song title or an artist.");
+    }
+    const results = await Promise.allSettled([searchItunes(term), searchJioSaavn(term)]);
+    const candidates = [];
+    for (const result of results) {
+        if (result.status === "fulfilled") {
+            candidates.push(...playableOnly(result.value));
+        }
+    }
+    if (!candidates.length) {
+        const failures = results.filter((result) => result.status === "rejected");
+        if (failures.length === results.length) {
+            const reasons = failures.map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
+            throw new Error(`The track services could not be reached: ${reasons.join(" / ")}`);
+        }
+    }
+    return dedupe(candidates).slice(0, 30);
+}

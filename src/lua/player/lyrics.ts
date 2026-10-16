@@ -132,9 +132,10 @@ function setStyle(): void {
 }
 
 function stopTimer(): void {
-  if (state.timer !== undefined) {
-    state.timer.stop();
-    state.timer.close();
+  const timer = state.timer;
+  if (timer !== undefined) {
+    timer.stop(timer);
+    timer.close(timer);
     state.timer = undefined;
   }
 }
@@ -335,7 +336,7 @@ function open(lines: LyricLine[], metadata: LyricMetadata, source: string): void
     { buffer: buffer, silent: true, desc: "Toggle lyric follow" },
   );
   state.timer = vim.uv.new_timer();
-  state.timer.start(0, options().lyric.interval, (): void => {
+  state.timer.start(state.timer, 0, options().lyric.interval, (): void => {
     mpv.property("time-pos", (value: unknown): void => {
       if (typeof value === "number") {
         update(value);

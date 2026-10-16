@@ -39,9 +39,10 @@ local function setStyle()
     vim.api.nvim_set_hl(0, "PlayerOk", {fg = "#7fd1a6", default = true})
 end
 local function stopTimer()
-    if state.timer ~= nil then
-        state.timer.stop()
-        state.timer.close()
+    local timer = state.timer
+    if timer ~= nil then
+        timer.stop(timer)
+        timer.close(timer)
         state.timer = nil
     end
 end
@@ -399,6 +400,7 @@ function ____exports.open()
     map("+", player.volume_up, "Raise volume")
     state.timer = vim.uv.new_timer()
     state.timer.start(
+        state.timer,
         0,
         400,
         function()

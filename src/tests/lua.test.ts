@@ -120,6 +120,43 @@ test("the generated Lua calls the Neovim API the right way", () => {
   }
 });
 
+test("the generated Lua passes the libuv handles to their methods", () => {
+  // The methods of luv take the handle as their first argument; a call
+  // without it silently does nothing, so the handle is checked here.
+  const streamMethods = ["write", "read_start", "read_stop", "is_closing", "connect"];
+  const timerMethods = ["start", "stop", "close"];
+  const last = (path: string): string => {
+    const parts = path.split(".");
+    return parts[parts.length - 1] ?? path;
+  };
+  for (const file of generatedFiles()) {
+    const source = readFileSync(file, "utf8");
+    for (const method of streamMethods) {
+      const pattern = new RegExp(`\\b([A-Za-z_][A-Za-z0-9_.]*)\\.${method}\\(\\s*([A-Za-z_][A-Za-z0-9_.]*)`, "g");
+      for (const match of source.matchAll(pattern)) {
+        assert.equal(
+          last(match[1]),
+          last(match[2]),
+          `${file}: "${match[1]}.${method}(" must pass the handle as its first argument`,
+        );
+      }
+    }
+    for (const method of timerMethods) {
+      const pattern = new RegExp(`\\b([A-Za-z_][A-Za-z0-9_.]*)\\.${method}\\(\\s*([A-Za-z_][A-Za-z0-9_.]*)`, "g");
+      for (const match of source.matchAll(pattern)) {
+        if (last(match[1]) !== "timer") {
+          continue;
+        }
+        assert.equal(
+          last(match[1]),
+          last(match[2]),
+          `${file}: "${match[1]}.${method}(" must pass the handle as its first argument`,
+        );
+      }
+    }
+  }
+});
+
 test("the generated Lua only requires the player modules", () => {
   for (const file of generatedFiles()) {
     const source = readFileSync(file, "utf8");

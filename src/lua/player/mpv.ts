@@ -123,10 +123,10 @@ function closePipe(): void {
   const pipe = state.pipe;
   if (pipe !== undefined) {
     attempt((): void => {
-      pipe.read_stop();
+      pipe.read_stop(pipe);
     });
-    if (!pipe.is_closing()) {
-      pipe.close();
+    if (!pipe.is_closing(pipe)) {
+      pipe.close(pipe);
     }
   }
   state.pipe = undefined;
@@ -136,8 +136,9 @@ function closePipe(): void {
 }
 
 function writeRaw(message: unknown): boolean {
-  if (state.connected && state.pipe !== undefined && !state.pipe.is_closing()) {
-    state.pipe.write(vim.json.encode(message) + "\n");
+  const pipe = state.pipe;
+  if (state.connected && pipe !== undefined && !pipe.is_closing(pipe)) {
+    pipe.write(pipe, vim.json.encode(message) + "\n");
     return true;
   }
   return false;
@@ -215,7 +216,7 @@ function connect(tries: number): void {
   state.connecting = true;
   const pipe = vim.uv.new_pipe();
   state.pipe = pipe;
-  pipe.connect(state.socket, (err: unknown): void => {
+  pipe.connect(pipe, state.socket, (err: unknown): void => {
     if (err !== undefined && err !== null) {
       closePipe();
       if (tries < MAX_CONNECT_TRIES && !state.stopping) {
@@ -236,7 +237,7 @@ function connect(tries: number): void {
     state.connecting = false;
     state.failed = false;
     state.buffer = "";
-    pipe.read_start((readErr: unknown, data?: string): void => {
+    pipe.read_start(pipe, (readErr: unknown, data?: string): void => {
       if (readErr !== undefined && readErr !== null) {
         closePipe();
         return;

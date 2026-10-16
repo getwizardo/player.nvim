@@ -1,6 +1,6 @@
 import { fetchTtml } from "./lrc-red.js";
 import { getLyrics } from "./lyrics-service.js";
-import { searchLyrics } from "./search.js";
+import { searchLyrics, searchTracks } from "./search.js";
 import { translateLines } from "./translator.js";
 import type { LyricCandidate, LyricLine } from "./types.js";
 
@@ -11,6 +11,7 @@ import type { LyricCandidate, LyricLine } from "./types.js";
  *
  *   ttml <ISRC>              the TTML of a recording
  *   search <query>           the candidates of the lyric services
+ *   tracks <query>           the candidates of the track catalogues
  *   lyrics <candidate-json>  the lyrics of a candidate
  *   translate <target>       the translation of the lines on stdin
  */
@@ -36,7 +37,7 @@ export function parseJson<T>(text: string, what: string): T {
 
 /** The usage of the helper. */
 export const USAGE =
-  "Usage: lyrics.js ttml <ISRC> | search <query> | lyrics <candidate-json> | translate <target> [source]";
+  "Usage: lyrics.js ttml <ISRC> | search <query> | tracks <query> | lyrics <candidate-json> | translate <target> [source]";
 
 /** Run the helper. */
 export async function main(): Promise<void> {
@@ -47,6 +48,14 @@ export async function main(): Promise<void> {
       throw new Error(USAGE);
     }
     process.stdout.write(`${JSON.stringify(await searchLyrics(query))}\n`);
+    return;
+  }
+  if (command === "tracks") {
+    const query = args.join(" ").trim();
+    if (!query) {
+      throw new Error(USAGE);
+    }
+    process.stdout.write(`${JSON.stringify(await searchTracks(query))}\n`);
     return;
   }
   if (command === "lyrics") {

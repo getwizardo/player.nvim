@@ -2,6 +2,7 @@ import { setActions } from "./actions";
 import type { UrlAction, VoidAction } from "./actions";
 import { setup as applyOptions, isFilterType, isRepeatMode, options } from "./config";
 import { formatClock, sourceLabel } from "./format";
+import { helperCall } from "./helper";
 import { attempt, indexOf, matchCapture, push, split } from "./lua-util";
 import * as lyrics from "./lyrics";
 import * as mpv from "./mpv";
@@ -189,6 +190,22 @@ function parseSearchResults(text: string): SearchEntry[] {
     entries[entries.length] = entry;
   }
   return entries;
+}
+
+/** Turn an answer of the helper into a list of records. */
+function toRecords(value: unknown): Record<string, unknown>[] {
+  if (type(value) !== "table") {
+    return [];
+  }
+  const records: Record<string, unknown>[] = [];
+  const source = value as Record<string, unknown>[];
+  for (let index = 0; index < source.length; index += 1) {
+    const entry = source[index];
+    if (type(entry) === "table") {
+      records[records.length] = entry as Record<string, unknown>;
+    }
+  }
+  return records;
 }
 
 function loadModule<T>(name: string): T | undefined {
@@ -538,7 +555,7 @@ export function search(query?: string): void {
       notify("yt-dlp is required for search.", vim.log.levels.ERROR);
       return;
     }
-    notify("Searching yt-dlp and the JioSaavn catalog…");
+    notify("Searching yt-dlp, iTunes and the JioSaavn catalog…");
     const entries: SearchEntry[] = [];
     let pending = 2;
     let failure = "";
@@ -554,7 +571,7 @@ export function search(query?: string): void {
       vim.ui.select(
         entries,
         {
-          prompt: "Search results · yt-dlp + JioSaavn catalog",
+          prompt: "Search results · yt-dlp + iTunes + JioSaavn",
           format_item: (item: unknown): string => {
             const entry = item as SearchEntry;
             let suffix = "";
@@ -600,12 +617,14 @@ export function search(query?: string): void {
         finish();
       });
     });
-    lyrics.jiosaavnCandidates(
-      term,
-      (songs: Record<string, unknown>[], error?: string): void => {
+    helperCall(
+      ["tracks", term],
+      undefined,
+      (value: unknown, error?: string): void => {
         if (error !== undefined) {
           failure = failure === "" ? error : failure;
         }
+        const songs = toRecords(value);
         for (let index = 0; index < songs.length; index += 1) {
           const song = songs[index];
           const url = song.url;
@@ -616,7 +635,7 @@ export function search(query?: string): void {
             title: typeof song.title === "string" ? song.title : "Unknown title",
             uploader: typeof song.artist === "string" ? song.artist : "",
             url: url,
-            provider: "JioSaavn",
+            provider: typeof song.provider === "string" ? song.provider : "catalog",
           };
           if (typeof song.duration === "number") {
             entry.duration = song.duration;
@@ -625,6 +644,8 @@ export function search(query?: string): void {
         }
         finish();
       },
+      { PLAYER_JIOSAAVN_API: options().jiosaavn_api },
+      30000,
     );
   };
   if (query !== undefined && query !== "") {

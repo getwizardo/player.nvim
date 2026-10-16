@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { fetchTtml, isValidIsrc } from "./lrc-red.js";
 import { decodeXml, parseLrc, parseTtml, plainText, tagBlocks, timing, xmlAttribute } from "./parsers.js";
 import { hasWordTimings, plainLines } from "./lyrics-service.js";
-import { dedupe } from "./search.js";
+import { dedupe, playableOnly } from "./search.js";
 import { artistsOf } from "./providers/jiosaavn.js";
 import { toCandidate } from "./providers/lrclib.js";
 import { artistOf, isrcOf, toCandidate as toMusicBrainzCandidate } from "./providers/musicbrainz.js";
@@ -196,5 +196,21 @@ test("detects the word level timings", () => {
   assert.equal(
     hasWordTimings([{ start: 0, finish: 1, text: "a", words: [{ start: 0, finish: 1, text: "a" }] }]),
     true,
+  );
+});
+
+test("keeps only the candidates that can be played", () => {
+  const playable: LyricCandidate = {
+    provider: "iTunes",
+    id: "1",
+    title: "Song",
+    artist: "Artist",
+    album: "",
+    url: "https://example.com/preview.m4a",
+  };
+  const silent: LyricCandidate = { ...playable, id: "2", url: undefined };
+  assert.deepEqual(
+    playableOnly([playable, silent]).map((candidate) => candidate.id),
+    ["1"],
   );
 });

@@ -57,9 +57,10 @@ function setStyle(): void {
 }
 
 function stopTimer(): void {
-  if (state.timer !== undefined) {
-    state.timer.stop();
-    state.timer.close();
+  const timer = state.timer;
+  if (timer !== undefined) {
+    timer.stop(timer);
+    timer.close(timer);
     state.timer = undefined;
   }
 }
@@ -268,7 +269,7 @@ export function open(): void {
   map("-", player.volume_down, "Lower volume");
   map("+", player.volume_up, "Raise volume");
   state.timer = vim.uv.new_timer();
-  state.timer.start(0, 400, (): void => {
+  state.timer.start(state.timer, 0, 400, (): void => {
     state.frame += 1;
     draw();
   });

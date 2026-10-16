@@ -237,8 +237,14 @@ local autocmds = {}
 
 local function noop() end
 
+-- Every message that the plugin writes to the mpv socket.
+local ipcMessages = {}
+
+-- Every timer that the plugin starts.
+local timerCalls = {}
+
 local fakePipe = {
-  connect = function(_, callback)
+  connect = function(_, path, callback)
     callback(nil)
   end,
   read_start = function(_, callback) end,
@@ -248,12 +254,15 @@ local fakePipe = {
     return false
   end,
   write = function(_, data)
+    ipcMessages[#ipcMessages + 1] = data
     return true
   end,
 }
 
 local fakeTimer = {
-  start = noop,
+  start = function(timer, interval, repeats, callback)
+    timerCalls[#timerCalls + 1] = { interval = interval, repeats = repeats, callback = callback }
+  end,
   stop = noop,
   close = noop,
   is_active = function()
@@ -340,7 +349,10 @@ vim = {
     fnamemodify = function(path)
       return path
     end,
-    executable = function()
+    executable = function(cmd)
+      if cmd == "mpv" then
+        return 1
+      end
       return 0
     end,
     has = function()
@@ -348,6 +360,12 @@ vim = {
     end,
     mkdir = function()
       return 1
+    end,
+    isdirectory = function()
+      return 1
+    end,
+    getfsize = function()
+      return 1024
     end,
     globpath = function()
       return {}
@@ -362,7 +380,7 @@ vim = {
       return 4242
     end,
     jobstart = function()
-      return -1
+      return 7
     end,
     jobwait = function()
       return { -1 }
@@ -515,6 +533,7 @@ local queue = require("player.queue")
 local config = require("player.config")
 local ttml = require("player.ttml")
 local player = require("player")
+local ui = require("player.ui")
 
 check("lua-util.split keeps empty fields", function()
   local parts = util.split("a,b,,c", ",")
@@ -765,6 +784,32 @@ check("player.play keeps the source as the argument", function()
   eq(player.queueInfo().current, 1, "the track is playing")
 end)
 
+check("player.play loads the file in mpv", function()
+  player.setup({})
+  player.queueClear()
+  local before = #ipcMessages
+  player.play("https://example.com/another.mp3")
+  -- The socket is opened by a deferred callback, the queued commands are
+  -- replayed as soon as it is connected.
+  for index = 1, #deferred do
+    local pending = deferred[index]
+    local success, failure = pcall(pending)
+    if not success then
+      print("DEBUG deferred " .. index .. " failed: " .. tostring(failure))
+    end
+  end
+  local found = false
+  local seen = {}
+  for index = before + 1, #ipcMessages do
+    local message = ipcMessages[index]
+    seen[#seen + 1] = message
+    if string.find(message, "loadfile", 1, true) and string.find(message, "another.mp3", 1, true) then
+      found = true
+    end
+  end
+  ok(found, "mpv received the loadfile command, saw: " .. table.concat(seen, " | "))
+end)
+
 check("player.queueRemove removes the track", function()
   player.setup({})
   player.queueClear()
@@ -795,6 +840,14 @@ check("player.isDirectMedia knows the files mpv can play", function()
   ok(player.isDirectMedia("https://example.com/song.M4A?token=1"), "the query is ignored")
   ok(not player.isDirectMedia("https://www.jiosaavn.com/song/abc"), "a web page is not direct")
   ok(not player.isDirectMedia("https://example.com/stream"), "an extension is needed")
+end)
+
+check("the dashboard starts its redraw timer", function()
+  player.setup({})
+  local before = #timerCalls
+  ui.open()
+  ok(#timerCalls > before, "the timer was started with its handle")
+  ui.close()
 end)
 
 print("SUMMARY " .. tostring(total - failures) .. "/" .. tostring(total))
