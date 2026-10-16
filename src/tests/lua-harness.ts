@@ -243,11 +243,16 @@ local ipcMessages = {}
 -- Every timer that the plugin starts.
 local timerCalls = {}
 
+-- The callback that reads the answers of mpv.
+local pipeReadCallback = nil
+
 local fakePipe = {
   connect = function(_, path, callback)
     callback(nil)
   end,
-  read_start = function(_, callback) end,
+  read_start = function(_, callback)
+    pipeReadCallback = callback
+  end,
   read_stop = noop,
   close = noop,
   is_closing = function()
@@ -848,6 +853,34 @@ check("the dashboard starts its redraw timer", function()
   ui.open()
   ok(#timerCalls > before, "the timer was started with its handle")
   ui.close()
+end)
+
+check("the player reads the answers of mpv", function()
+  player.setup({})
+  local before = #notifications
+  player.status()
+  -- The socket is opened by a deferred callback; the queued commands are
+  -- replayed as soon as it is connected.
+  for index = 1, #deferred do
+    deferred[index]()
+  end
+  for _ = 1, 3 do
+    local message = ipcMessages[#ipcMessages]
+    local id = string.match(message, '"request_id":(%d+)')
+    if pipeReadCallback ~= nil and id ~= nil then
+      pipeReadCallback(nil, '{"error":"success","data":12,"request_id":' .. id .. '}\\n')
+    end
+    for index = 1, #scheduled do
+      scheduled[index]()
+    end
+  end
+  local found = false
+  for index = before + 1, #notifications do
+    if string.find(notifications[index].message, "0:12", 1, true) then
+      found = true
+    end
+  end
+  ok(found, "the position of mpv was shown")
 end)
 
 print("SUMMARY " .. tostring(total - failures) .. "/" .. tostring(total))

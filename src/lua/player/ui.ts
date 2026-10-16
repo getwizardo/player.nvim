@@ -107,6 +107,16 @@ function buildLines(): string[] {
   ];
 }
 
+/** Highlight a part of the dashboard. */
+function highlight(line: number, column: number, group: string): void {
+  vim.api.nvim_buf_set_extmark(state.buffer, namespace, line, column, {
+    end_row: line + 1,
+    end_col: 0,
+    hl_group: group,
+    priority: 100,
+  });
+}
+
 function draw(): void {
   if (state.buffer === 0 || !vim.api.nvim_buf_is_valid(state.buffer)) {
     stopTimer();
@@ -117,21 +127,21 @@ function draw(): void {
   vim.api.nvim_buf_set_lines(state.buffer, 0, -1, false, lines);
   vim.bo[state.buffer].modifiable = false;
   vim.api.nvim_buf_clear_namespace(state.buffer, namespace, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerEyebrow", 0, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerAccent", 2, 16, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerEyebrow", 4, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerTitle", 5, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 6, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerBar", 8, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 9, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerEyebrow", 11, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerAccent", 12, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 13, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 14, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 15, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 17, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 18, 0, -1);
-  vim.api.nvim_buf_add_highlight(state.buffer, namespace, "PlayerMuted", 19, 0, -1);
+  highlight(0, 0, "PlayerEyebrow");
+  highlight(2, 16, "PlayerAccent");
+  highlight(4, 0, "PlayerEyebrow");
+  highlight(5, 0, "PlayerTitle");
+  highlight(6, 0, "PlayerMuted");
+  highlight(8, 0, "PlayerBar");
+  highlight(9, 0, "PlayerMuted");
+  highlight(11, 0, "PlayerEyebrow");
+  highlight(12, 0, "PlayerAccent");
+  highlight(13, 0, "PlayerMuted");
+  highlight(14, 0, "PlayerMuted");
+  highlight(15, 0, "PlayerMuted");
+  highlight(17, 0, "PlayerMuted");
+  highlight(18, 0, "PlayerMuted");
+  highlight(19, 0, "PlayerMuted");
 }
 
 const onProperty = (value: unknown): void => {
