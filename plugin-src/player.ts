@@ -17,3 +17,10 @@ interface PlayerCommands {
 
 const commands = require("player.commands") as unknown as PlayerCommands;
 commands.register();
+
+/**
+ * Make this file an ES module. Without an export TypeScript treats it as a
+ * global script, and tstl then emits `commands = require(...)` — leaking a
+ * global into every Neovim session that loads the plugin.
+ */
+export {};
