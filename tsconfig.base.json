@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "6.0",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["lua-types/5.1"],
+    "declaration": false,
+    "sourceMap": false,
+    "skipLibCheck": true
+  },
+  "tstl": {
+    "luaTarget": "5.1",
+    "luaLibImport": "inline",
+    "noImplicitSelf": true,
+    "noHeader": true
+  }
+}

@@ -1,326 +1,654 @@
-local M = {}
-local config = require("player.config")
+-- Lua Library inline imports
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local nowPlaying, stopProgress, startProgress, currentTrackInfo, firstText, autoLyrics, wireMpv, playTrack, playAt, openCandidate, state
+local ____config = require("player.config")
+local getOptions = ____config.get
+local setupConfig = ____config.setup
+local defaults = ____config.defaults
+local highlights = require("player.highlights")
+local http = require("player.http")
+local karaoke = require("player.karaoke")
+local lyrics = require("player.lyrics")
 local mpv = require("player.mpv")
-local queue, current, history = {}, 0, {}
-local shuffle_enabled, repeat_mode = false, "off"
-
-local function notify(text, level)
-  vim.notify(text, level or vim.log.levels.INFO, { title = "player.nvim" })
+local search = require("player.search")
+local ytdlp = require("player.sources.ytdlp")
+local ui = require("player.ui")
+local ____util = require("player.util")
+local asNumber = ____util.asNumber
+local asRecord = ____util.asRecord
+local asText = ____util.asText
+local fail = ____util.fail
+local formatTime = ____util.formatTime
+local lower = ____util.lower
+local notify = ____util.notify
+local trim = ____util.trim
+local upper = ____util.upper
+local warn = ____util.warn
+function nowPlaying(track)
+    return {
+        title = track.title,
+        artist = track.artist,
+        album = track.album or "",
+        duration = track.duration or 0,
+        provider = track.provider,
+        url = track.url
+    }
 end
-
-local function valid_source(source)
-  if type(source) ~= "string" or source == "" or source:match("^%s*$") or source:sub(1, 1) == "-" then return nil end
-  local path = vim.fn.expand(source)
-  if vim.fn.filereadable(path) == 1 then return vim.fn.fnamemodify(path, ":p") end
-  if source:match("^[%a][%w+.-]*://") then return source end
-  return nil
-end
-
-local function play_index(index, from_history)
-  local source = queue[index]
-  if not source then return end
-  if current > 0 and current ~= index and not from_history then history[#history + 1] = current end
-  current = index
-  mpv.play(source)
-  local label = vim.fn.fnamemodify(source:gsub("[?#].*$", ""), ":t")
-  if label == "" then label = source end
-  notify("Playing " .. label)
-end
-
-local function next_index()
-  if shuffle_enabled and #queue > 1 then
-    local index = current
-    while index == current do index = math.random(#queue) end
-    return index
-  end
-  if current < #queue then return current + 1 end
-  if repeat_mode == "queue" and #queue > 0 then return 1 end
-end
-
-function M.setup(options)
-  config.setup(options)
-  math.randomseed((vim.uv or vim.loop).hrtime() % 2147483647)
-  local maps = config.options.keymaps
-  vim.keymap.set("n", maps.play_pause, M.toggle_pause, { desc = "Player: play/pause" })
-  vim.keymap.set("n", maps.next, M.next, { desc = "Player: next" })
-  vim.keymap.set("n", maps.previous, M.previous, { desc = "Player: previous" })
-  vim.keymap.set("n", maps.lyrics, function() M.lyrics() end, { desc = "Player: lyrics" })
-  return M
-end
-
-function M.play(source)
-  local resolved = valid_source(source)
-  if not resolved then
-    notify("Not a readable local file or a URL: " .. tostring(source), vim.log.levels.ERROR)
-    return
-  end
-  queue, current, history = { resolved }, 0, {}
-  play_index(1)
-end
-
-function M.add_to_queue(paths)
-  local first_added
-  for _, path in ipairs(paths) do
-    local resolved = valid_source(path)
-    if resolved then
-      queue[#queue + 1] = resolved
-      first_added = first_added or #queue
-    end
-  end
-  if not first_added then notify("No playable files selected.", vim.log.levels.WARN); return end
-  notify(string.format("Added %d track(s) to the queue.", #queue - first_added + 1))
-  if current == 0 then play_index(first_added) end
-end
-
-function M.queue_add(source)
-  local resolved = valid_source(source)
-  if not resolved then
-    notify("Not a readable local file or a URL: " .. tostring(source), vim.log.levels.ERROR)
-    return
-  end
-  M.add_to_queue({ resolved })
-end
-
-function M.queue_info()
-  return { count = #queue, current = current, shuffle = shuffle_enabled, repeat_mode = repeat_mode }
-end
-
-function M.queue_list()
-  if #queue == 0 then notify("The player queue is empty.", vim.log.levels.WARN); return end
-  local items = {}
-  for index, source in ipairs(queue) do
-    local label = vim.fn.fnamemodify(source:gsub("[?#].*$", ""), ":t")
-    if label == "" then label = source end
-    items[index] = string.format("%s %02d. %s", index == current and "▶" or " ", index, label)
-  end
-  vim.ui.select(items, { prompt = "Player queue · " .. #queue .. " track(s)" }, function(_, index)
-    if index then play_index(index) end
-  end)
-end
-
-function M.queue_clear()
-  queue, current, history = {}, 0, {}
-  if mpv.is_alive() then mpv.stop() end
-  notify("Queue cleared.")
-end
-
-function M.toggle_shuffle(enabled)
-  shuffle_enabled = enabled == nil and not shuffle_enabled or enabled == true
-  notify("Shuffle " .. (shuffle_enabled and "on" or "off") .. ".")
-  return shuffle_enabled
-end
-
-function M.cycle_repeat(mode)
-  if mode and mode ~= "off" and mode ~= "queue" and mode ~= "track" then
-    notify("Repeat mode must be off, queue, or track.", vim.log.levels.ERROR)
-    return repeat_mode
-  end
-  repeat_mode = mode or (repeat_mode == "off" and "queue" or (repeat_mode == "queue" and "track" or "off"))
-  notify("Repeat " .. repeat_mode .. ".")
-  return repeat_mode
-end
-
-function M.pick_local(append)
-  local ok, telescope = pcall(require, "telescope.builtin")
-  local pickers_ok, pickers = pcall(require, "telescope.pickers")
-  local finders_ok, finders = pcall(require, "telescope.finders")
-  local conf_ok, conf = pcall(require, "telescope.config")
-  local actions_ok, actions = pcall(require, "telescope.actions")
-  local action_state_ok, action_state = pcall(require, "telescope.actions.state")
-  if config.options.use_telescope and ok and pickers_ok and finders_ok and conf_ok and actions_ok and action_state_ok then
-    local cwd = vim.fn.getcwd()
-    local cmd = vim.fn.executable("fd") == 1 and { "fd", "--type", "f", "--hidden", "--exclude", ".git" } or { "find", ".", "-type", "f" }
-    pickers.new({}, {
-      prompt_title = "Play local audio",
-      finder = finders.new_oneshot_job(cmd, { cwd = cwd }),
-      sorter = conf.values.file_sorter({}),
-      attach_mappings = function(prompt_bufnr, map)
-        local function select_entry(enqueue)
-          local selection = action_state.get_selected_entry()
-          actions.close(prompt_bufnr)
-          if selection then
-            local path = cwd .. "/" .. selection.value
-            if enqueue then M.add_to_queue({ path }) else M.play(path) end
-          end
+function stopProgress()
+    if state.progressTimer ~= nil then
+        state.progressTimer.stop()
+        if not state.progressTimer.is_closing() then
+            state.progressTimer.close()
         end
-        map("i", "<CR>", function() select_entry(append == true) end)
-        map("n", "<CR>", function() select_entry(append == true) end)
-        if not append then
-          map("i", "<C-q>", function() select_entry(true) end)
-          map("n", "<C-q>", function() select_entry(true) end)
+        state.progressTimer = nil
+    end
+end
+function startProgress()
+    if state.progressTimer ~= nil then
+        return
+    end
+    local timer = vim.uv.new_timer()
+    state.progressTimer = timer
+    timer.start(
+        0,
+        500,
+        vim.schedule_wrap(function()
+            if not mpv.isAlive() then
+                stopProgress()
+                return
+            end
+            mpv.poll(
+                "time-pos",
+                function(position)
+                    if position == nil then
+                        return
+                    end
+                    mpv.poll(
+                        "duration",
+                        function(duration)
+                            local ____ui_setProgress_4 = ui.setProgress
+                            local ____position_3 = position
+                            local ____duration_2 = duration
+                            if ____duration_2 == nil then
+                                local ____opt_0 = state.now
+                                ____duration_2 = ____opt_0 and ____opt_0.duration
+                            end
+                            ____ui_setProgress_4(____position_3, ____duration_2 or 0)
+                        end
+                    )
+                end
+            )
+        end)
+    )
+end
+function currentTrackInfo(done)
+    mpv.getProperty(
+        "metadata",
+        function(metadata)
+            local meta = asRecord(metadata)
+            mpv.getProperty(
+                "media-title",
+                function(mediaTitle)
+                    mpv.getProperty(
+                        "duration",
+                        function(duration)
+                            local ____done_11 = done
+                            local ____temp_8 = firstText(meta, {"title", "tit2"}) or trim(asText(mediaTitle))
+                            local ____firstText_result_9 = firstText(meta, {"artist", "tpe1", "album_artist", "icy-name"})
+                            local ____firstText_result_10 = firstText(meta, {"album", "talb"})
+                            local ____duration_7 = duration
+                            if ____duration_7 == nil then
+                                local ____opt_5 = state.now
+                                ____duration_7 = ____opt_5 and ____opt_5.duration
+                            end
+                            ____done_11({
+                                title = ____temp_8,
+                                artist = ____firstText_result_9,
+                                album = ____firstText_result_10,
+                                duration = ____duration_7 or 0,
+                                isrc = upper(firstText(meta, {"isrc", "tsrc"}))
+                            })
+                        end
+                    )
+                end
+            )
         end
-        return true
-      end,
-    }):find()
-    return
-  end
-  local files = vim.fn.globpath(vim.fn.getcwd(), "**/*", false, true)
-  local audio, limit = {}, 500
-  for _, path in ipairs(files) do
-    if #audio >= limit then break end
-    local extension = path:lower():match("%.([%w]+)$")
-    local supported = { mp3 = true, m4a = true, aac = true, flac = true, wav = true, ogg = true, opus = true, wma = true, aiff = true, ape = true, alac = true, mp4 = true, webm = true, mkv = true }
-    if vim.fn.filereadable(path) == 1 and supported[extension] then audio[#audio + 1] = path end
-  end
-  if #audio == 0 then notify("No audio files found under the current working directory.", vim.log.levels.WARN); return end
-  vim.ui.select(audio, { prompt = append and "Queue local audio" or "Play local audio" }, function(path)
-    if path then if append then M.add_to_queue({ path }) else M.play(path) end end
-  end)
+    )
 end
-
-function M.toggle_pause() mpv.pause() end
-function M.stop() mpv.stop() end
-function M.next()
-  local index = next_index()
-  if index then play_index(index) else notify("End of queue.", vim.log.levels.WARN) end
-end
-function M.previous()
-  if shuffle_enabled and #history > 0 then
-    local index = table.remove(history)
-    play_index(index, true)
-  elseif current > 1 then
-    play_index(current - 1)
-  else
-    mpv.seek(0)
-  end
-end
-function M._on_end_file(message)
-  if not message or message.reason ~= "eof" then return end
-  if repeat_mode == "track" and queue[current] then
-    play_index(current, true)
-    return
-  end
-  local index = next_index()
-  if index then play_index(index) else notify("Queue finished.", vim.log.levels.INFO) end
-end
-function M.shutdown() mpv.shutdown() end
-
-local function parse_search_result(text)
-  local ok, data = pcall(vim.json.decode, text)
-  if not ok then return {} end
-  local results = {}
-  for _, item in ipairs(data.entries or {}) do
-    local url = item.webpage_url or item.original_url or item.url
-    if not url and item.id then url = "https://www.youtube.com/watch?v=" .. item.id end
-    if url then
-      results[#results + 1] = { title = item.title or item.fulltitle or item.id or "Untitled", uploader = item.uploader or item.channel or "", url = url, duration = item.duration }
+function firstText(meta, names)
+    for ____, name in ipairs(names) do
+        local value = meta[name]
+        if value ~= nil then
+            local text = trim(asText(value))
+            if text ~= "" then
+                return text
+            end
+        end
     end
-  end
-  return results
-end
-
-function M.search(query)
-  local function go(term)
-    if not term or term == "" then return end
-    if vim.fn.executable(config.options.yt_dlp) ~= 1 then notify("yt-dlp is required for search.", vim.log.levels.ERROR); return end
-    notify("Searching yt-dlp…")
-    vim.system({ config.options.yt_dlp, "--flat-playlist", "--dump-single-json", "--no-warnings", "ytsearch10:" .. term }, { text = true }, function(result)
-      vim.schedule(function()
-        if result.code ~= 0 then notify(result.stderr ~= "" and result.stderr or "yt-dlp search failed.", vim.log.levels.ERROR); return end
-        local results = parse_search_result(result.stdout)
-        if #results == 0 then notify("No search results.", vim.log.levels.WARN); return end
-        vim.ui.select(results, {
-          prompt = "yt-dlp results",
-          format_item = function(item)
-            local duration = item.duration and string.format(" [%d:%02d]", math.floor(item.duration / 60), math.floor(item.duration % 60)) or ""
-            return item.title .. (item.uploader ~= "" and " — " .. item.uploader or "") .. duration
-          end,
-        }, function(item) if item then M.play(item.url) end end)
-      end)
-    end)
-  end
-  if query and query ~= "" then go(query) else vim.ui.input({ prompt = "Search tracks via yt-dlp: " }, go) end
-end
-
-function M.download(url)
-  local function choose(source)
-    if not source or source == "" then return end
-    if not source:match("^https?://") then notify("Download expects an http(s) URL.", vim.log.levels.ERROR); return end
-    if vim.fn.executable(config.options.yt_dlp) ~= 1 then notify("yt-dlp is required for downloads.", vim.log.levels.ERROR); return end
-    vim.fn.mkdir(config.options.download_dir, "p")
-    vim.system({ config.options.yt_dlp, "--extract-audio", "--audio-format", "best", "--no-playlist", "--output", "%(title)s.%(ext)s", "--paths", config.options.download_dir, source }, { text = true }, function(result)
-      vim.schedule(function()
-        if result.code == 0 then notify("Download complete: " .. config.options.download_dir)
-        else notify(result.stderr ~= "" and result.stderr or "Download failed.", vim.log.levels.ERROR) end
-      end)
-    end)
-  end
-  if url and url ~= "" then choose(url) else vim.ui.input({ prompt = "URL to download audio from: " }, choose) end
-end
-
-local function configure_eq()
-  vim.ui.input({ prompt = "10 EQ gains in dB, comma-separated (-12 to 12): ", default = table.concat(config.options.eq.bands, ",") }, function(value)
-    if not value then return end
-    local bands = {}
-    for gain in value:gmatch("[^,]+") do
-      local number = tonumber(vim.trim(gain))
-      if not number or number < -12 or number > 12 then notify("Each EQ band must be between -12 and 12 dB.", vim.log.levels.ERROR); return end
-      bands[#bands + 1] = number
+    for key in pairs(meta) do
+        local lowered = lower(key)
+        for ____, name in ipairs(names) do
+            if lowered == name then
+                local text = trim(asText(meta[key]))
+                if text ~= "" then
+                    return text
+                end
+            end
+        end
     end
-    if #bands ~= 10 then notify("Enter exactly ten comma-separated gains.", vim.log.levels.ERROR); return end
-    config.options.eq.bands, config.options.eq.enabled = bands, true
-    mpv.apply_audio()
-    notify("Custom 10-band EQ enabled.")
-  end)
+    return ""
 end
-
-function M.eq(arg)
-  if arg == "off" then config.options.eq.enabled = false; mpv.apply_audio(); notify("EQ disabled."); return end
-  if arg == "on" then config.options.eq.enabled = true; mpv.apply_audio(); notify("EQ enabled."); return end
-  configure_eq()
-end
-
-local function configure_filter(kind)
-  if not kind then return end
-  if kind == "off" then config.options.filter.enabled = false; config.options.filter.type = "off"; mpv.apply_audio(); notify("Filter disabled."); return end
-  if kind ~= "lowpass" and kind ~= "highpass" and kind ~= "bandpass" then
-    notify("Filter must be lowpass, highpass, bandpass, or off.", vim.log.levels.ERROR)
-    return
-  end
-  config.options.filter.type = kind
-  vim.ui.input({ prompt = "Filter frequency (Hz): ", default = tostring(config.options.filter.frequency) }, function(value)
-    if not value then return end
-    local frequency = tonumber(value)
-    if not frequency or frequency < 20 or frequency > 20000 then notify("Frequency must be from 20 to 20000 Hz.", vim.log.levels.ERROR); return end
-    config.options.filter.frequency, config.options.filter.enabled = frequency, true
-    if kind == "bandpass" then
-      vim.ui.input({ prompt = "Band-pass Q width: ", default = tostring(config.options.filter.width) }, function(width)
-        if not width then return end
-        config.options.filter.width = tonumber(width) or 1
-        mpv.apply_audio()
-        notify("Band-pass filter enabled.")
-      end)
-    else
-      mpv.apply_audio()
-      notify(kind .. " filter enabled.")
+function autoLyrics()
+    if not getOptions().lyric.auto then
+        return
     end
-  end)
-end
-
-function M.filter(kind)
-  if kind and kind ~= "" then configure_filter(kind); return end
-  vim.ui.select({ "off", "lowpass", "highpass", "bandpass" }, { prompt = "Audio filter" }, configure_filter)
-end
-
-function M.lyrics(isrc) require("player.lyrics").show(isrc) end
-function M.lyrics_search(query) require("player.lyrics").search(query) end
-function M.jiosaavn(query) require("player.lyrics").search_jiosaavn(query) end
-function M.translate(target) require("player.lyrics").translate(target) end
-function M.visualize(enabled) mpv.visualize(enabled) end
-
-function M.status()
-  if not mpv.is_alive() then notify("Player is stopped."); return end
-  mpv.property("media-title", function(title)
-    mpv.property("time-pos", function(position)
-      local time = type(position) == "number" and string.format("%d:%02d", math.floor(position / 60), math.floor(position % 60)) or "--:--"
-      notify(string.format("%s  %s  ·  %d queued", title or "Playing", time, #queue))
+    if not karaoke.isOpen() then
+        return
+    end
+    currentTrackInfo(function(info)
+        if info.title == "" and info.isrc == "" then
+            return
+        end
+        lyrics.resolveTrack(
+            info,
+            function(set, ____error)
+                if set == nil then
+                    ui.setLyricStatus(____error or "not found")
+                    return
+                end
+                karaoke.open(set)
+                ui.setLyricStatus(lyrics.describeSet(set))
+            end
+        )
     end)
-  end)
 end
-
-function M.open(source)
-  if source then M.play(source); return end
-  require("player.ui").open()
+function wireMpv()
+    if state.wired then
+        return
+    end
+    state.wired = true
+    mpv.observe(
+        "pause",
+        function(value)
+            local paused = value == true
+            ui.setPlaying(not paused)
+        end
+    )
+    mpv.observe(
+        "duration",
+        function(value)
+            local duration = asNumber(value)
+            if duration ~= nil and duration > 0 and state.now ~= nil and state.now.duration == 0 then
+                state.now.duration = duration
+                ui.setNow(state.now)
+            end
+        end
+    )
+    mpv.observe(
+        "metadata",
+        function()
+            if not getOptions().lyric.auto then
+                return
+            end
+            currentTrackInfo(function(info)
+                if state.now == nil then
+                    return
+                end
+                state.now.isrc = info.isrc
+                if info.title ~= "" then
+                    state.now.title = info.title
+                end
+                if info.artist ~= "" then
+                    state.now.artist = info.artist
+                end
+                if info.album ~= "" then
+                    state.now.album = info.album
+                end
+                ui.setNow(state.now)
+            end)
+        end
+    )
+    mpv.onEvent(function(message)
+        if message.event == "end-file" then
+            ui.setBuffering(false)
+            ui.setPlaying(false)
+            if message.reason == "eof" then
+                ____exports.next()
+            elseif message.reason == "error" then
+                fail("mpv could not play the track." .. (message.file_error == nil and "" or " " .. message.file_error))
+            end
+            return
+        end
+        if message.event == "file-loaded" then
+            ui.setBuffering(false)
+            ui.setPlaying(true)
+            mpv.setVolume(state.volume)
+            mpv.applyAudio()
+            autoLyrics()
+        end
+    end)
 end
-
-return M
+function playTrack(track)
+    if not mpv.ensure() then
+        return
+    end
+    wireMpv()
+    state.now = nowPlaying(track)
+    ui.setNow(state.now)
+    ui.setBuffering(true)
+    ui.setLyricStatus("looking up…")
+    startProgress()
+    mpv.play(
+        track.url,
+        function(____error)
+            if ____error ~= nil then
+                ui.setBuffering(false)
+                ui.setLyricStatus("unavailable")
+                return
+            end
+            mpv.setVolume(state.volume)
+            mpv.applyAudio()
+        end
+    )
+end
+function playAt(index)
+    local track = state.queue[index + 1]
+    if track == nil then
+        warn("Nothing left in the queue.")
+        return
+    end
+    state.index = index
+    playTrack(track)
+end
+function ____exports.next()
+    if #state.queue == 0 then
+        warn("The queue is empty.")
+        return
+    end
+    playAt((state.index + 1) % #state.queue)
+end
+function ____exports.setVolume(level)
+    state.volume = math.max(
+        0,
+        math.min(
+            130,
+            math.floor(level)
+        )
+    )
+    ui.setVolume(state.volume > 100 and 100 or state.volume)
+    if mpv.isAlive() then
+        mpv.setVolume(state.volume)
+    end
+end
+function openCandidate(candidate)
+    ui.setLyricStatus("fetching…")
+    lyrics.fetch(
+        candidate,
+        function(set, ____error)
+            if set == nil then
+                ui.setLyricStatus("unavailable")
+                fail("Could not load lyrics: " .. (____error or "unknown error"))
+                return
+            end
+            karaoke.open(set)
+            ui.setLyricStatus(lyrics.describeSet(set))
+            notify("Lyrics: " .. lyrics.describeSet(set))
+        end
+    )
+end
+state = {
+    queue = {},
+    index = -1,
+    lastQuery = "",
+    volume = 75,
+    wired = false
+}
+local configured = false
+local leaveHook = false
+--- True once `setup()` has run, so `plugin/` does not clobber a user's options.
+function ____exports.isConfigured()
+    return configured
+end
+--- Probe the HTTP layer and the lyric services it talks to.
+function ____exports.doctor()
+    http.check(function(summary)
+        local lines = {unpack(summary)}
+        lines[#lines + 1] = "mpv: " .. (vim.fn.executable(getOptions().mpv) == 1 and "found" or ("NOT FOUND (" .. getOptions().mpv) .. ")")
+        lines[#lines + 1] = "yt-dlp: " .. (ytdlp.available() and "found" or "not found (the ytdlp source needs it)")
+        notify(table.concat(lines, "\n"))
+    end)
+end
+--- mpv's own output, which is what to read when a track will not start.
+function ____exports.diagnostics()
+    local text = mpv.diagnostics()
+    if text == "" then
+        notify(mpv.isAlive() and "mpv is running and has not reported anything yet." or "mpv has not been started yet.")
+        return
+    end
+    notify(text, vim.log.levels.WARN)
+end
+--- Queue a track and start it, expanding Internet Archive items if needed.
+local function playFromQueue(track)
+    if track.provider ~= "archive" then
+        state.queue = #state.queue > 0 and state.queue or ({track})
+        state.index = __TS__ArrayIndexOf(state.queue, track) >= 0 and __TS__ArrayIndexOf(state.queue, track) or 0
+        playTrack(track)
+        return
+    end
+    search.resolve(
+        track,
+        function(tracks)
+            if #tracks == 0 then
+                fail("That Internet Archive item has no playable audio.")
+                return
+            end
+            state.queue = tracks
+            state.index = 0
+            ui.setTracks(tracks)
+            playTrack(tracks[1])
+        end
+    )
+end
+function ____exports.playSelection()
+    local track = ui.selection()
+    if track == nil then
+        warn("Select a result first (search with :Player <query>).")
+        return
+    end
+    playFromQueue(track)
+end
+function ____exports.playUrl(url)
+    local target = trim(url)
+    if target == "" then
+        warn("Give :PlayerUrl something to play.")
+        return
+    end
+    local track = {
+        provider = "url",
+        title = target,
+        artist = "",
+        album = "",
+        url = target
+    }
+    state.queue = {track}
+    state.index = 0
+    playTrack(track)
+end
+function ____exports.previous()
+    if #state.queue == 0 then
+        warn("The queue is empty.")
+        return
+    end
+    playAt((state.index - 1 + #state.queue) % #state.queue)
+end
+function ____exports.togglePlay()
+    if not mpv.ensure() then
+        return
+    end
+    mpv.isPlaying(function(playing) return mpv.setPaused(playing) end)
+end
+function ____exports.seekRelative(delta)
+    if not mpv.ensure() then
+        return
+    end
+    mpv.nudge(delta)
+end
+function ____exports.nudgeVolume(delta)
+    ____exports.setVolume(state.volume + delta)
+end
+function ____exports.stop()
+    stopProgress()
+    mpv.stop()
+    ui.setPlaying(false)
+    ui.setBuffering(false)
+    ui.setLyricStatus("stopped")
+end
+function ____exports.close()
+    karaoke.close()
+    ui.close()
+end
+function ____exports.toggleVisualizer()
+    if not mpv.ensure() then
+        return
+    end
+    local enabled = not mpv.isVisualizing()
+    mpv.visualize(enabled)
+    ui.setVisualizer(enabled)
+end
+function ____exports.searchTracks(query)
+    local term = trim(query)
+    if term == "" then
+        warn("Give :Player a search query.")
+        return
+    end
+    state.lastQuery = term
+    ui.open()
+    ui.setQuery(term)
+    ui.setTracks({})
+    ui.setLyricStatus("no lyrics loaded")
+    search.run(
+        {query = term},
+        function(tracks, errors)
+            ui.setTracks(tracks)
+            state.queue = tracks
+            state.index = -1
+            if #tracks == 0 then
+                local detail = #errors > 0 and "\n" .. errors[1] or ""
+                fail((("No results for \"" .. term) .. "\".") .. detail)
+                return
+            end
+            notify(((tostring(#tracks) .. " result(s) for \"") .. term) .. "\".")
+        end
+    )
+end
+function ____exports.reSearch()
+    if state.lastQuery == "" then
+        warn("Nothing to repeat yet.")
+        return
+    end
+    ____exports.searchTracks(state.lastQuery)
+end
+--- Download the selected result with yt-dlp instead of streaming it.
+function ____exports.downloadSelection()
+    local track = ui.selection()
+    if track == nil then
+        warn("Select a result to download first.")
+        return
+    end
+    ytdlp.download(
+        track.url,
+        function(ok, message) return notify(message, ok and vim.log.levels.INFO or vim.log.levels.ERROR) end
+    )
+end
+function ____exports.status()
+    local parts = {}
+    parts[#parts + 1] = state.now == nil and "Nothing playing." or ((((("Playing " .. state.now.title) .. " — ") .. state.now.artist) .. " (") .. state.now.provider) .. ")"
+    parts[#parts + 1] = ((("Queue: " .. tostring(#state.queue)) .. " track(s), position ") .. tostring(state.index + 1)) .. "."
+    parts[#parts + 1] = ((("Volume: " .. tostring(state.volume)) .. "%. Visualizer: ") .. (mpv.isVisualizing() and "on" or "off")) .. "."
+    parts[#parts + 1] = ("Search sources: " .. table.concat(
+        getOptions().search.sources,
+        ", "
+    )) .. "."
+    parts[#parts + 1] = ("Lyric sources: " .. table.concat(
+        getOptions().lyric.sources,
+        ", "
+    )) .. "."
+    local diagnostics = mpv.diagnostics()
+    if diagnostics ~= "" then
+        parts[#parts + 1] = diagnostics
+    end
+    notify(table.concat(parts, "\n"))
+end
+--- Which sources are configured and reachable from here.
+function ____exports.sources()
+    local music = {}
+    for ____, source in ipairs(search.SOURCES) do
+        music[#music + 1] = source
+    end
+    local missing = ytdlp.available() and "" or " (yt-dlp not on PATH — the ytdlp source will fail)"
+    notify(((((("Music sources: " .. table.concat(music, ", ")) .. missing) .. "\nEnabled: ") .. table.concat(
+        getOptions().search.sources,
+        ", "
+    )) .. "\nLyrics: ") .. table.concat(
+        getOptions().lyric.sources,
+        ", "
+    ))
+end
+local function showCandidates(candidates)
+    if #candidates == 0 then
+        fail("No lyrics matched that query.")
+        return
+    end
+    local labels = {}
+    for ____, candidate in ipairs(candidates) do
+        local duration = candidate.duration ~= nil and candidate.duration > 0 and " " .. formatTime(candidate.duration) or ""
+        labels[#labels + 1] = ((((((candidate.title .. " — ") .. candidate.artist) .. duration) .. " [") .. candidate.provider) .. (candidate.sync == "word" and " · word-sync" or "")) .. "]"
+    end
+    vim.ui.select(
+        labels,
+        {prompt = "Pick lyrics"},
+        function(_choice, index)
+            if index == nil then
+                return
+            end
+            local candidate = candidates[index]
+            if candidate == nil then
+                return
+            end
+            openCandidate(candidate)
+        end
+    )
+end
+--- Lyrics for whatever is playing, falling back to a search.
+function ____exports.lyricsForCurrent()
+    currentTrackInfo(function(info)
+        if info.title == "" then
+            warn("Nothing is playing, so there is nothing to look up. Use :PlayerLyricsSearch <query>.")
+            return
+        end
+        ui.setLyricStatus(("looking up \"" .. info.title) .. "\"…")
+        lyrics.resolveTrack(
+            info,
+            function(set)
+                if set == nil then
+                    ui.setLyricStatus("not found")
+                    lyrics.search(
+                        (info.artist .. " ") .. info.title,
+                        function(candidates) return showCandidates(candidates) end
+                    )
+                    return
+                end
+                karaoke.open(set)
+                ui.setLyricStatus(lyrics.describeSet(set))
+            end
+        )
+    end)
+end
+function ____exports.lyricsSearch(query)
+    local term = trim(query)
+    if term == "" then
+        ____exports.lyricsForCurrent()
+        return
+    end
+    ui.setLyricStatus(("searching \"" .. term) .. "\"…")
+    lyrics.search(
+        term,
+        function(candidates, errors)
+            if #candidates == 0 and #errors > 0 then
+                fail("Lyric search failed: " .. errors[1])
+                return
+            end
+            showCandidates(candidates)
+        end
+    )
+end
+function ____exports.lyricsByIsrc(isrc)
+    local code = upper(trim(isrc))
+    if code == "" then
+        warn("Give :PlayerLyricsIsrc an ISRC code.")
+        return
+    end
+    ui.setLyricStatus(("ISRC " .. code) .. "…")
+    lyrics.fetchIsrc(
+        code,
+        function(set, ____error)
+            if set == nil then
+                ui.setLyricStatus("not found")
+                fail((("No lrc.red lyrics for ISRC " .. code) .. ": ") .. (____error or "not found"))
+                return
+            end
+            karaoke.open(set)
+            ui.setLyricStatus(lyrics.describeSet(set))
+        end
+    )
+end
+function ____exports.translateLyrics(target)
+    karaoke.translateTo(target)
+end
+--- Apply user options, define highlights and hook the dashboard together.
+function ____exports.setup(user)
+    configured = true
+    setupConfig(user)
+    highlights.define()
+    state.volume = getOptions().default_volume
+    ui.wire({
+        playSelection = ____exports.playSelection,
+        openLyrics = ____exports.lyricsForCurrent,
+        togglePlay = ____exports.togglePlay,
+        next = ____exports.next,
+        previous = ____exports.previous,
+        seekRelative = ____exports.seekRelative,
+        nudgeVolume = ____exports.nudgeVolume,
+        toggleVisualizer = ____exports.toggleVisualizer,
+        translate = function() return ____exports.translateLyrics(nil) end,
+        reSearch = ____exports.reSearch,
+        stop = ____exports.stop,
+        close = ____exports.close
+    })
+    ui.setVolume(state.volume > 100 and 100 or state.volume)
+    wireMpv()
+    if not leaveHook then
+        leaveHook = true
+        vim.api.nvim_create_autocmd(
+            "VimLeavePre",
+            {callback = function()
+                stopProgress()
+                mpv.shutdown()
+                return false
+            end}
+        )
+    end
+end
+____exports.defaults = defaults
+____exports.search = search
+____exports.mpv = mpv
+____exports.ui = ui
+____exports.karaoke = karaoke
+____exports.lyrics = lyrics
+____exports.getOptions = getOptions
+return ____exports

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "plugin-src",
+    "outDir": "plugin"
+  },
+  "tstl": {
+    "noResolvePaths": ["player.*"]
+  },
+  "include": ["plugin-src/**/*.ts"]
+}

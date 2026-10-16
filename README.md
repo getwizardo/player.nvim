@@ -1,165 +1,218 @@
 # player.nvim
 
-A music player for Neovim, written in Lua with a TypeScript lyrics/search/translation helper. Its centered, rounded dashboard and karaoke float use a dark Apple Music-inspired palette, animated now-playing/progress, and timed line/word highlighting. Neovim supplies the UI and controls; **mpv** does the actual decoding and playback.
+Music playback and word-synced lyrics inside Neovim.
+
+Every line of this plugin is written in **TypeScript** (`src/player/**.ts`) and
+compiled to Lua with [typescript-to-lua](https://github.com/TypeScriptToLua/TypeScriptToLua).
+The Lua files in `lua/` and `plugin/` are build output — they are committed so
+the plugin installs without a toolchain, but they are never edited by hand.
+
+Neovim draws the UI and handles the keys; **mpv** does the decoding and the
+audio. Lyrics come from [lrc.red](https://lrc.red) (word-synced TTML),
+[LRCLIB](https://lrclib.net) and the JioSaavn catalogue, all key-less.
+
+```
+:Player blinding lights        search every enabled source and open the dashboard
+:PlayerLyrics                  word-synced lyrics for whatever is playing
+```
 
 ## Features
 
-- Local files, streaming URLs and yt-dlp-supported sources, including JioSaavn links through yt-dlp's JioSaavn extractor.
-- JioSaavn catalog search and play by its public song permalink (the search API is an unofficial third-party wrapper; no direct media URL extraction or DRM workaround is implemented here).
-- LRCLIB + JioSaavn-catalog lyrics search; direct ISRC-based TTML from [lrc.red](https://lrc.red); line-synced LRC and plain-lyrics fallback.
-- Karaoke view with word-level TTML timing where supplied, current-line follow, optional translation rows and a persistent dark, rounded Neovim UI.
-- Real-time mpv/FFmpeg `showcqt` spectrum in mpv's own video window (separate from the Neovim dashboard).
-- Custom 10-band EQ, low-pass/high-pass/band-pass filters, local picker, selectable in-memory queue, shuffle/history, repeat modes, yt-dlp search/download, and playback controls.
-- TypeScript helper (`dist/lyrics.js`) handles search, TTML/LRC parsing, and translation. Direct lrc.red TTML fetch retains a curl fallback; expanded search/translation needs Node.js.
+- **Search, then play.** One query fans out to yt-dlp (YouTube, YouTube Music,
+  SoundCloud), the Internet Archive, Audius, JioSaavn and, optionally, any
+  Invidious instance. Results are de-duplicated and grouped by source.
+- **Playback that reports why it failed.** mpv is driven over its JSON IPC
+  socket; commands issued before the socket is up are queued and flushed on
+  connect, mpv's own stderr is captured, and `:PlayerDiagnostics` prints it.
+- **Karaoke float with real word timing.** lrc.red TTML is parsed word by word:
+  the sung word is highlighted, finished words dim, and the active line follows
+  playback. `[` / `]` jump playback to the previous/next line.
+- **Three lyric sources, searched at once**, ranked by provider then by title
+  similarity — not just first-match-wins.
+- **Direct ISRC lookup** with `:PlayerLyricsIsrc USUG11904206`.
+- **Translation** of the open lyrics through any LibreTranslate endpoint, kept
+  line-aligned 1:1 with the source.
+- **LRC export** of any set (`lyrics.toLrc`), handy for saving beside the audio.
+- Dark, rounded floats; a transport bar with progress; no dependency on
+  Telescope, plenary, or any other plugin.
 
 ## Requirements
 
-- Neovim **0.10+** (uses `vim.system`).
-- **mpv** for playback. On Unix-like systems the plugin communicates with mpv over its JSON IPC socket.
-- **yt-dlp** for general search, downloads, and JioSaavn permalink extraction; install **FFmpeg** for audio extraction, EQ/filter processing, and `showcqt` spectrum visualization.
-- **Node.js 18+** for lyrics catalog search, translation, and the TypeScript helper. `curl` remains sufficient for the direct lrc.red ISRC/TTML path if Node is unavailable.
-- Optional: Telescope.nvim for fuzzy local picking. The built-in picker remains available without it.
-- Optional translator: a local LibreTranslate server (default `http://127.0.0.1:5000`) or any compatible endpoint you configure.
+| Tool | Needed for |
+| --- | --- |
+| Neovim 0.10+ | `vim.system`, `vim.uv`, extmarks |
+| `mpv` | all playback |
+| `curl` (or `wget`) | every HTTP request — Neovim has no TLS client |
+| `yt-dlp` | the `ytdlp`/`youtube`/`ytmusic`/`soundcloud` sources and `:PlayerDownload` |
+| `ffmpeg` | the `showcqt` visualizer and the EQ/filter chain |
+
+Nothing else. There is no Node.js runtime dependency: the TypeScript is
+compiled at development time and shipped as Lua.
 
 ## Install
 
-With lazy.nvim:
+lazy.nvim:
 
 ```lua
 {
   "getwizardo/player.nvim",
-  cmd = {
-    "Player", "PlayerPlay", "PlayerPause", "PlayerStop", "PlayerNext", "PlayerPrev",
-    "PlayerQueue", "PlayerQueueAdd", "PlayerQueueList", "PlayerQueueClear",
-    "PlayerShuffle", "PlayerRepeat", "PlayerSearch", "PlayerDownload", "PlayerEQ",
-    "PlayerFilter", "PlayerLyrics", "PlayerLyricsSearch", "PlayerTranslate",
-    "PlayerJioSaavn", "PlayerVisualize", "PlayerStatus", "PlayerQuit",
+  cmd = { "Player", "PlayerLyrics", "PlayerKaraoke", "PlayerToggle", "PlayerNext", "PlayerPrev" },
+  opts = {
+    search = { sources = { "ytdlp", "archive", "audius" } },
+    lyric = { sources = { "lrc.red", "lrclib", "jiosaavn" } },
   },
-  config = function()
-    require("player").setup({
-      download_dir = vim.fn.expand("~/Music"),
-      eq = { enabled = false },
-    })
-  end,
 }
 ```
 
-With a native package manager, put this repository on `runtimepath`, then call `require("player").setup()` in your config. `plugin/player.lua` registers the `:Player*` commands automatically.
+The commands are registered by `plugin/player.lua`, so the plugin works even if
+you never call `setup()`.
 
-The TypeScript helper is split into focused `.ts` modules under `src/` (`parsers`, lyric/provider services, translation, types, and CLI). `src/lyrics.ts` is the public entry/barrel; the compiled entry is `dist/lyrics.js`, with its sibling runtime modules in `dist/`. To rebuild or run parser tests:
+## Commands
 
-```sh
-npm ci
-npm run build
-npm test
-```
+| Command | What it does |
+| --- | --- |
+| `:Player` | open the dashboard |
+| `:Player <query>` / `:PlayerSearch <query>` | search every enabled music source |
+| `:PlayerUrl <url>` | play a URL or local file directly |
+| `:PlayerToggle` `:PlayerNext` `:PlayerPrev` `:PlayerStop` | transport |
+| `:PlayerSeek <seconds>` | seek relatively (`:PlayerSeek -15` rewinds) |
+| `:PlayerVolume [0-130]` | show or set the volume |
+| `:PlayerVisual` | toggle mpv's `showcqt` spectrum |
+| `:PlayerLyrics` | lyrics for the current track |
+| `:PlayerLyricsSearch <query>` | search the lyric catalogues |
+| `:PlayerLyricsIsrc <ISRC>` | word-synced TTML straight from lrc.red |
+| `:PlayerTranslate [lang]` | translate the open lyrics |
+| `:PlayerKaraoke` | toggle the karaoke float |
+| `:PlayerDownload` | download the selected result with yt-dlp |
+| `:PlayerStatus` / `:PlayerSources` | queue, volume, configured sources |
+| `:PlayerDiagnostics` | mpv's own output |
+| `:PlayerDoctor` | check curl, mpv, yt-dlp and the lyric services |
+| `:PlayerClose` | close the floats (playback continues) |
 
-## Usage
+### Keys
 
-```vim
-:Player                       " Apple Music-inspired dashboard
-:Player path/to/song.flac     " play local file
-:PlayerPlay https://...       " play an mpv-supported URL
-:PlayerQueue                  " pick a local file and enqueue it
-:PlayerQueueAdd path/song.flac " enqueue a file or URL
-:PlayerQueueList               " browse and play the queue
-:PlayerQueueClear              " stop and clear the queue
-:PlayerShuffle                 " toggle shuffle (also accepts on/off)
-:PlayerRepeat                  " cycle off → queue → track
-:PlayerSearch                 " search with yt-dlp
-:PlayerSearch artist song     " search yt-dlp sources
-:PlayerJioSaavn artist song    " search/play a JioSaavn result
-:PlayerDownload https://...   " extract/download audio
-:PlayerLyricsSearch song name " search LRCLIB + JioSaavn catalog
-:PlayerTranslate vi            " translate the open karaoke lyrics
-:PlayerVisualize               " live FFmpeg spectrum in mpv
-:PlayerPause
-:PlayerNext
-:PlayerPrev
-:PlayerStop
-:PlayerEQ                     " enter ten comma-separated dB gains
-:PlayerEQ on                  " enable current EQ curve
-:PlayerEQ off
-:PlayerFilter                " choose a filter and frequency
-:PlayerFilter lowpass         " enable a low-pass filter
-:PlayerFilter off
-:PlayerLyrics                 " use mpv's ISRC tag, or prompt for an ISRC
-:PlayerLyrics GBUM71029604    " fetch lrc.red TTML for a known ISRC
-:PlayerStatus
-:PlayerQuit
-```
+Dashboard (results pane): `<CR>` play · `<C-y>` lyrics · `j`/`k` move ·
+`<Tab>`/`<S-Tab>` jump between sources · `/` filter · `1`–`9` play by index ·
+`r` repeat the last search · `q` close.
 
-`:PlayerEQ` accepts ten values in ascending frequency order: 31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, and 16000 Hz. Values are clamped/validated within −12 to +12 dB. The filter command accepts `lowpass`, `highpass`, `bandpass`, or `off` and validates its frequency before applying it. `:PlayerQueueList` opens a selectable queue; choose an entry to play it. `:PlayerShuffle [on|off]` toggles random next-track selection (and keeps a back-history), while `:PlayerRepeat [off|queue|track]` cycles or sets end-of-track repeat behavior. `:PlayerQueueClear` stops playback and removes the queue.
+Now-playing pane: `<Space>` play/pause · `[`/`]` previous/next · `h`/`l` seek ·
+`-`/`+` volume · `v` visualizer · `y` lyrics · `t` translate · `s` stop.
 
-Example setup with custom initial values and keymaps:
+Karaoke float: `[`/`]` seek to the previous/next lyric line · `t` translate ·
+`f` toggle follow · `j`/`k` scroll (turns follow off) · `q` close.
+
+Four global normal-mode maps are also created, defaulting to `<Leader>mp`
+(play/pause), `<Leader>mn` (next), `<Leader>mb` (previous) and `<Leader>ml`
+(lyrics). Set any of them to `""` to disable it:
 
 ```lua
-require("player").setup({
-  default_volume = 65,
-  download_dir = vim.fn.expand("~/Music"),
-  eq = {
-    enabled = true,
-    bands = { 2, 1, 0, -1, 0, 1, 2, 1, 0, -1 },
-  },
-  filter = { enabled = false, type = "off", frequency = 1000, width = 1 },
-  keymaps = {
-    play_pause = "<leader>pp",
-    next = "]n",
-    previous = "[n",
-    lyrics = "<leader>ly",
-  },
-})
+require("player").setup({ keymaps = { play_pause = "", next = "", previous = "", lyrics = "" } })
 ```
-
-## Streaming and service integrations
-
-The plugin delegates URL playback and extraction to mpv and yt-dlp. It does **not** implement private service APIs or bypass login, subscription, DRM, or playback restrictions. A service URL works only if mpv/yt-dlp supports it and the user's account/session is authorized as required. For example, Spotify playback is not the same as opening a public web URL: Spotify's Web API uses OAuth scopes and its player endpoints control an authorized Connect device. This plugin does not currently ship a Spotify account/player adapter.
-
-The search and download commands pass each argument directly to the child process (no shell interpolation), and download only accepts HTTP(S) URLs. Only download content you have the right to save and follow each site's terms.
-
-## Lyrics, karaoke, and translation
-
-`:PlayerLyricsSearch` searches LRCLIB and the JioSaavn song catalog; lyrics for every search result are resolved through LRCLIB synced LRC/plain text. JioSaavn is an unofficial catalog integration; selecting one of its songs looks up lyrics through LRCLIB metadata, and its own lyric availability varies. Only an explicit `:PlayerLyrics <ISRC>` request uses the documented lrc.red `.ttml` route; the plugin does not invent an lrc.red search endpoint. TTML timed spans become word karaoke; line-timed LRC highlights the active line.
-
-The lyric float follows playback. Press `t` to translate and `f` to toggle auto-follow. Translation uses the configurable LibreTranslate-compatible endpoint. The default is local-only; if you configure a remote endpoint, lyric text is sent to that translation service. It refuses to attach a translation if the translator changes the number of lyric lines, avoiding timing corruption. Translation quality and available languages depend on that provider.
-
-## Visualization and JioSaavn
-
-`:PlayerVisualize` enables mpv's live `showcqt` spectrum via its FFmpeg complex-filter graph. It opens a separate mpv video window; it requires an FFmpeg build that includes `showcqt` and a usable mpv video output. The dashboard also renders a live progress bar and the configured EQ curve.
-
-`:PlayerJioSaavn` searches JioSaavn catalog metadata through the configurable `jiosaavn_api` wrapper and plays the selected public song permalink using yt-dlp's JioSaavn extractor. This catalog endpoint is **unofficial third-party infrastructure** and can change or go offline. The plugin does not consume its returned direct download links or decrypt media. Follow JioSaavn's terms and your local copyright rules.
 
 ## Configuration
 
-`require("player").setup(opts)` deep-merges these options with defaults:
+```lua
+require("player").setup({
+  mpv = "mpv",
+  yt_dlp = "yt-dlp",
+  http = "curl",              -- falls back to wget when curl is missing
+  mpv_args = {},              -- extra argv for the mpv process
+  default_volume = 75,
+  seek_step = 5,
+  download_dir = "~/Music",
 
-| Option | Default | Purpose |
-| --- | --- | --- |
-| `mpv` | `"mpv"` | mpv executable |
-| `yt_dlp` | `"yt-dlp"` | yt-dlp executable |
-| `node` | `"node"` | Node executable for search/translation helper |
-| `jiosaavn_api` | `"https://saavn.sumit.co"` | Unofficial JioSaavn metadata-search wrapper base URL |
-| `translator.url` | `"http://127.0.0.1:5000"` | LibreTranslate-compatible endpoint base |
-| `translator.api_key` | `""` | Optional translation service API key |
-| `translator.source` | `"auto"` | Source language code for translation |
-| `use_telescope` | `true` | Use Telescope if available |
-| `download_dir` | `~/Music` | yt-dlp output folder |
-| `default_volume` | `75` | Initial mpv volume |
-| `eq` | disabled, ten 0 dB bands | Equalizer state |
-| `filter` | disabled | Filter type, frequency, and width |
-| `mpv_args` | `{}` | Extra mpv command-line arguments |
-| `keymaps` | `<Space>`, `]n`, `[n`, `l` | Playback/lyrics mappings |
+  search = {
+    -- pick from: ytdlp youtube ytmusic soundcloud archive audius invidious jiosaavn
+    sources = { "ytdlp", "archive", "audius" },
+    limit = 12,
+    youtube = "ytsearch",
+    invidious = "",           -- e.g. "https://inv.nadeko.net" to opt in
+    audius = "https://api.audius.co",
+    archive = "https://archive.org",
+    timeout = 20,
+  },
 
-See [`doc/player.txt`](doc/player.txt) for the Vim help page.
+  lyric = {
+    sources = { "lrc.red", "lrclib", "jiosaavn" },
+    auto = true,              -- refresh an open karaoke float per track
+    follow = true,            -- keep the active line centred
+    lrc_red = "https://lrc.red",
+    lrclib = "https://lrclib.net",
+    jiosaavn_api = "https://saavn.sumit.co",  -- unofficial wrapper; "" disables
+    timeout = 20,
+  },
 
-## Implementation references
+  translator = { url = "http://127.0.0.1:5000", api_key = "", source = "auto" },
 
-These upstream references shaped the integration boundaries and commands:
+  eq = { enabled = false, bands = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+  filter = { enabled = false, type = "off", frequency = 1000, width = 1 },
+})
+```
 
-- [lrc.red API docs](https://lrc.red/docs) document direct format URLs such as `/s/<id>.ttml`; the plugin uses that direct route rather than inventing a search API. [LRCLIB API docs](https://lrclib.net/docs) document its searchable `/api/search` records, LRC timestamps, and responsible-client requirements.
-- [JioSaavn API docs](https://saavn.sumit.co/docs) describe an **unofficial** catalog wrapper and song-search response; the plugin uses catalog metadata/permalinks only. [yt-dlp's JioSaavn extractor](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/jiosaavn.py) is used to open the permalink when supported.
-- [Neovim Lua guide](https://neovim.io/doc/user/lua-guide/), [`vim.system()` reference](https://neovim.io/doc/user/lua/#vim.system), and [floating-window API](https://neovim.io/doc/user/api/#api-floatwin) inform async process handling, UI, and timed extmark highlighting.
-- [W3C TTML Karaoke extension](https://w3c.github.io/tt-module-karaoke/) describes timed spans for word emphasis. [mpv's JSON IPC and `lavfi-complex`](https://mpv.io/manual/stable/#json-ipc) underpin player control and the spectrum. [FFmpeg audio filters](https://ffmpeg.org/ffmpeg-filters.html#equalizer) define the parametric EQ stages.
-- [LibreTranslate API usage](https://docs.libretranslate.com/guides/api_usage/) documents `/translate`; the default endpoint is localhost so lyric text stays local unless a remote endpoint is configured.
-- [yt-dlp README](https://github.com/yt-dlp/yt-dlp#readme) documents JSON metadata, output templates, audio extraction, and extractor usage. [Telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) is an optional picker.
-- [Spotify authorization](https://developer.spotify.com/documentation/web-api/concepts/authorization) and [Player API](https://engineering.atspotify.com/2022/04/spotifys-player-api) explain why a public URL is not a general-purpose authorized stream. No Spotify credentials or DRM workarounds are included.
+`eq` and `filter` build an mpv `af` chain that is re-applied to every track.
+`:PlayerVisual` uses mpv's `showcqt` filter, which needs ffmpeg.
+
+## How it works
+
+```
+src/player/
+  init.ts        orchestration: search results -> queue -> mpv -> UI
+  commands.ts    :Player* commands and global keymaps
+  ui.ts          dashboard: results, now-playing, transport bar
+  karaoke.ts     lyric float and the word-highlight extmarks
+  mpv.ts         JSON IPC client (queue, observers, diagnostics)
+  http.ts        curl/wget transport driven by vim.system
+  search.ts      music source fan-out and de-duplication
+  lyrics.ts      lyric source fan-out, ISRC resolution, LRC export
+  translate.ts   LibreTranslate, kept line-aligned
+  format/        xml.ts (real nesting), ttml.ts (word sync), lrc.ts
+  providers/     lrcred.ts, lrclib.ts, jiosaavn.ts
+  sources/       ytdlp.ts, archive.ts, audius.ts, invidious.ts
+  util.ts        the only place Lua patterns appear
+plugin-src/player.ts   ->  plugin/player.lua
+```
+
+Two constraints of the TypeScript→Lua compile shape the code:
+
+- **No `async`/`await`.** Every I/O function takes a callback as its last
+  argument, so the whole plugin is continuation-passing style.
+- **No `RegExp`.** Text matching uses Lua patterns, wrapped by `util.ts`
+  (`match`, `matchList`, `matchPairs`, `indexOf`, `replace`, …) so no module has
+  to deal with Lua's multi-return values. Note that Lua patterns have no
+  alternation: `(a|b)` matches the literal text `a|b`.
+
+## Development
+
+```sh
+npm install
+npm run build       # tstl: src/player -> lua/, plugin-src -> plugin/
+npm run typecheck   # tsc --noEmit for both projects
+npm test            # build, then run the Lua suite under LuaJIT
+```
+
+`npm test` needs a Lua 5.1 interpreter: `luajit`, `lua5.1` or `lua` on `PATH`,
+or `LUA_BIN=/path/to/luajit`.
+
+The suite runs the **generated Lua**, not a reimplementation. The two harness
+files (`tests/lua/vim-shim.lua`, `tests/lua/run.lua`) are Lua on purpose: the
+shim *is* the stand-in for Neovim, so it has to exist before any TypeScript can
+run. Everything shipped to users is TypeScript.
+
+A mock HTTP server
+(`tests/node/server.ts`) serves responses recorded from the real lrc.red,
+LRCLIB, JioSaavn, Audius and Internet Archive APIs, so the plugin really shells
+out to `curl`, really decodes JSON and really parses the 17 KB lrc.red TTML
+fixture. `tests/lua/vim-shim.lua` stands in for Neovim: it records extmarks, so
+the tests assert that the sung word is highlighted at the right byte column.
+
+What the suite cannot cover here: it needs a real Neovim, so float positioning,
+`winhl` remapping and actual key dispatch are not exercised. Run
+`:PlayerDoctor` after installing to check your own setup.
+
+## Credits
+
+lrc.red and LRCLIB are free, key-less lyric catalogues; both ask that clients
+identify themselves, which `http.ts` does with
+`user-agent: player.nvim/1.0 (https://github.com/getwizardo/player.nvim)`.
+The JioSaavn search wrapper is a third-party service — point
+`lyric.jiosaavn_api` at your own instance, or set it to `""` to disable it.

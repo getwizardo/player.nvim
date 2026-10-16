@@ -1,0 +1,22 @@
+{
+ "hits": [
+  {
+   "isrc": "USUG11904206",
+   "title": "Blinding Lights",
+   "artist": "The Weeknd",
+   "album": "After Hours",
+   "year": 2020,
+   "duration": 200,
+   "score": 8.465
+  },
+  {
+   "isrc": "GBARL2000569",
+   "title": "Blinding Lights (Live at SoFi)",
+   "artist": "The Weeknd",
+   "album": "Live at SoFi Stadium",
+   "year": 2023,
+   "duration": 224,
+   "score": 8.005
+  }
+ ]
+}

@@ -1,0 +1,45 @@
+{
+ "data": [
+  {
+   "id": "trackAAA",
+   "track_id": "trackAAA",
+   "title": "Lofi Rain",
+   "slug": "lofi-rain",
+   "permalink": "lofi/lofi-rain",
+   "duration": 180,
+   "genre": "Lo-Fi",
+   "mood": "Chill",
+   "isrc": "QM4TX2100001",
+   "play_count": 4200,
+   "artwork": {
+    "150x150": "https://audius/a150.jpg",
+    "480x480": "https://audius/a480.jpg"
+   },
+   "user": {
+    "id": "userBBB",
+    "handle": "nightowl",
+    "name": "Night Owl"
+   }
+  },
+  {
+   "id": "trackCCC",
+   "track_id": "trackCCC",
+   "title": "Lofi Beats",
+   "slug": "lofi-beats",
+   "permalink": "lofi/lofi-beats",
+   "duration": 240,
+   "genre": "Lo-Fi",
+   "mood": "Calm",
+   "isrc": null,
+   "play_count": 900,
+   "artwork": {
+    "150x150": "https://audius/c150.jpg"
+   },
+   "user": {
+    "id": "userDDD",
+    "handle": "slowtape",
+    "name": "Slow Tape"
+   }
+  }
+ ]
+}

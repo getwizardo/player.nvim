@@ -1,15 +1,20 @@
 {
-  "name": "player.nvim-lyrics",
-  "version": "0.1.0",
+  "name": "player.nvim",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript TTML client for player.nvim",
+  "description": "Music playback and word-synced lyrics for Neovim \u2014 written in TypeScript, shipped as generated Lua",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/lyrics.test.js"
+    "build": "tstl -p tsconfig.json && tstl -p tsconfig.plugin.json",
+    "build:tests": "tsc -p tsconfig.node.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.plugin.json --noEmit",
+    "test": "npm run build && npm run build:tests && node .build/node/run.js"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
-    "typescript": "^5.8.3"
+    "@typescript-to-lua/language-extensions": "^1.19.0",
+    "lua-types": "^2.14.1",
+    "typescript": "^6.0.2",
+    "typescript-to-lua": "^1.37.1"
   }
 }

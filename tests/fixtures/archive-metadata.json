@@ -1,0 +1,45 @@
+{
+ "d1": "ia800000.us.archive.org",
+ "d2": "ia900000.us.archive.org",
+ "dir": "/23/items/nightwish-imaginaerum",
+ "files": [
+  {
+   "name": "01 - Taikatalvi.flac",
+   "source": "original",
+   "format": "Flac",
+   "length": "154.00",
+   "title": "Taikatalvi",
+   "track": "1",
+   "album": "Imaginaerum",
+   "creator": "Nightwish",
+   "size": "24000000",
+   "md5": "aaa"
+  },
+  {
+   "name": "02 - Storytime.flac",
+   "source": "original",
+   "format": "Flac",
+   "length": "357.00",
+   "title": "Storytime",
+   "track": "2",
+   "album": "Imaginaerum",
+   "creator": "Nightwish",
+   "size": "52000000",
+   "md5": "bbb"
+  },
+  {
+   "name": "Imaginaerum.png",
+   "source": "original",
+   "format": "PNG",
+   "size": "900000"
+  },
+  {
+   "name": "02 - Storytime.mp3",
+   "source": "derivative",
+   "format": "VBR MP3",
+   "length": "357.00",
+   "title": "Storytime",
+   "track": "2"
+  }
+ ]
+}

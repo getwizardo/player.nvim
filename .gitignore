@@ -1,2 +1,5 @@
+# Dependencies
 node_modules/
-dist/lyrics.test.js
+
+# Compiled test harness (the plugin's own Lua in lua/ and plugin/ IS shipped)
+.build/

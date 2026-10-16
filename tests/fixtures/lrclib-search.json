@@ -1,0 +1,27 @@
+[
+ {
+  "id": 1234567,
+  "name": "Blinding Lights",
+  "trackName": "Blinding Lights",
+  "artistName": "The Weeknd",
+  "albumName": "After Hours",
+  "duration": 200,
+  "instrumental": false,
+  "hasWordSync": true,
+  "plainLyrics": "I thought I'd seen enough\nI was dancing with the dark",
+  "syncedLyrics": "[00:27.39] I thought I'd seen enough\n[00:29.10] I was dancing with the dark\n[00:31.05] But the city called my name\n[00:33.20] And I never looked back\n[00:35.40]\n[00:36.90] I said, ooh, I'm blinded by the lights\n[00:41.20] No, I can't sleep until I feel your touch\n",
+  "lyricsfile": "apiVersion: '1.0'\nlines:\n  - text: I thought I'd seen enough\n    start_ms: 27390\n    end_ms: 29100\n"
+ },
+ {
+  "id": 7654321,
+  "name": "Blinding Lights",
+  "trackName": "Blinding Lights",
+  "artistName": "The Weeknd (karaoke)",
+  "albumName": "Instrumental",
+  "duration": 198,
+  "instrumental": true,
+  "hasWordSync": false,
+  "plainLyrics": "",
+  "syncedLyrics": ""
+ }
+]

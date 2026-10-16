@@ -1,0 +1,18 @@
+{
+ "response": {
+  "numFound": 1337,
+  "start": 0,
+  "docs": [
+   {
+    "identifier": "nightwish-imaginaerum",
+    "title": "Imaginaerum",
+    "creator": "Nightwish"
+   },
+   {
+    "identifier": "nightwish-dark-passion-play",
+    "title": "Dark Passion Play",
+    "creator": "Nightwish"
+   }
+  ]
+ }
+}

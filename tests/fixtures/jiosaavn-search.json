@@ -1,0 +1,58 @@
+{
+ "success": true,
+ "data": {
+  "total": 1,
+  "start": 0,
+  "results": [
+   {
+    "id": "RyoJwKwi",
+    "name": "Blinding Lights",
+    "type": "song",
+    "year": "2020",
+    "releaseDate": "2019-11-29",
+    "duration": "200",
+    "label": "Republic",
+    "explicitContent": false,
+    "playCount": "12000",
+    "language": "english",
+    "hasLyrics": true,
+    "lyricsId": "RyoJwKwi",
+    "url": "https://www.jiosaavn.com/song/blinding-lights/RyoJwKwi",
+    "copyright": null,
+    "album": {
+     "id": "12345",
+     "name": "After Hours",
+     "url": "https://www.jiosaavn.com/album/after-hours"
+    },
+    "artists": {
+     "primary": [
+      {
+       "id": "a1",
+       "name": "The Weeknd",
+       "role": "singer"
+      }
+     ],
+     "featured": [],
+     "all": [
+      {
+       "id": "a1",
+       "name": "The Weeknd"
+      }
+     ]
+    },
+    "image": [
+     {
+      "quality": "500x500",
+      "url": "https://c.saavncdn.com/cover-500.jpg"
+     }
+    ],
+    "downloadUrl": [
+     {
+      "quality": "320kbps",
+      "url": "https://aac.saavncdn.com/track.mp4"
+     }
+    ]
+   }
+  ]
+ }
+}
