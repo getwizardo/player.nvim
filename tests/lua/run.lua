@@ -716,7 +716,8 @@ test(":Player opens the dashboard and a search fills it", function()
   expect_true(#T.record.writes > before, "playback was started")
   local sent = T.json.decode(T.record.writes[#T.record.writes])
   expect_eq(sent.command[1], "loadfile", "the last command is a loadfile")
-  expect_contains(sent.command[2], "/archive/download/nightwish-imaginaerum/", "the archive item streams from archive.org")
+  -- Selecting an Archive *item* has to expand it into a concrete audio file.
+  expect_contains(sent.command[2], "/archive/download/nightwish-imaginaerum/02%20-%20Storytime", "the archive item expanded into an audio file")
 end)
 
 test(":PlayerSeek and :PlayerVolume drive mpv", function()

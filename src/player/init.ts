@@ -233,23 +233,28 @@ function playAt(index: number): void {
   playTrack(track);
 }
 
-/** Queue a track and start it, expanding Internet Archive items if needed. */
+/**
+ * Queue a track and start it.
+ *
+ * Internet Archive results are *items* (a directory URL mpv cannot play), so
+ * every selection goes through `search.resolve`, which expands an item into its
+ * playable audio files and passes anything else straight through.
+ */
 function playFromQueue(track: TrackResult): void {
-  if (track.provider !== "archive") {
-    state.queue = state.queue.length > 0 ? state.queue : [track];
-    state.index = state.queue.indexOf(track) >= 0 ? state.queue.indexOf(track) : 0;
-    playTrack(track);
-    return;
-  }
   search.resolve(track, (tracks) => {
-    if (tracks.length === 0) {
-      fail("That Internet Archive item has no playable audio.");
-      return;
+    const playable = tracks.length > 0 ? tracks : [track];
+    if (playable.length > 1) {
+      state.queue = playable;
+      state.index = 0;
+      ui.setTracks(playable);
+    } else if (state.queue.length === 0) {
+      state.queue = playable;
+      state.index = 0;
+    } else {
+      const position = state.queue.indexOf(playable[0]);
+      state.index = position >= 0 ? position : 0;
     }
-    state.queue = tracks;
-    state.index = 0;
-    ui.setTracks(tracks);
-    playTrack(tracks[0]);
+    playTrack(playable[0]);
   });
 }
 

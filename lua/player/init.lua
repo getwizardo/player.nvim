@@ -352,25 +352,28 @@ function ____exports.diagnostics()
     end
     notify(text, vim.log.levels.WARN)
 end
---- Queue a track and start it, expanding Internet Archive items if needed.
+--- Queue a track and start it.
+-- 
+-- Internet Archive results are *items* (a directory URL mpv cannot play), so
+-- every selection goes through `search.resolve`, which expands an item into its
+-- playable audio files and passes anything else straight through.
 local function playFromQueue(track)
-    if track.provider ~= "archive" then
-        state.queue = #state.queue > 0 and state.queue or ({track})
-        state.index = __TS__ArrayIndexOf(state.queue, track) >= 0 and __TS__ArrayIndexOf(state.queue, track) or 0
-        playTrack(track)
-        return
-    end
     search.resolve(
         track,
         function(tracks)
-            if #tracks == 0 then
-                fail("That Internet Archive item has no playable audio.")
-                return
+            local playable = #tracks > 0 and tracks or ({track})
+            if #playable > 1 then
+                state.queue = playable
+                state.index = 0
+                ui.setTracks(playable)
+            elseif #state.queue == 0 then
+                state.queue = playable
+                state.index = 0
+            else
+                local position = __TS__ArrayIndexOf(state.queue, playable[1])
+                state.index = position >= 0 and position or 0
             end
-            state.queue = tracks
-            state.index = 0
-            ui.setTracks(tracks)
-            playTrack(tracks[1])
+            playTrack(playable[1])
         end
     )
 end
